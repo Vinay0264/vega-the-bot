@@ -1,0 +1,2369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>VEGA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#07090f;--bg2:#0b0e18;--bg3:#0f1420;--bg4:#141a28;--bg5:#1a2236;
+  --bd:rgba(255,255,255,0.06);--bd2:rgba(255,255,255,0.10);--bd3:rgba(255,255,255,0.18);
+  --accent:#5ee7df;--accent2:#b490ff;--accent3:#ff6eb0;
+  --ad:rgba(94,231,223,0.18);--ag:rgba(94,231,223,0.06);
+  --t1:#e8edf8;--t2:#7a8aaa;--t3:#3a4a68;
+  --green:#4ade80;--amber:#fbbf24;--red:#f87171;--pink:#f472b6;--blue:#60a5fa;
+  --mono:'JetBrains Mono',monospace;--ui:'Space Grotesk',sans-serif;--display:'Syne',sans-serif;
+  --r:8px;--r2:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--t1);font-family:var(--ui);font-size:14px;line-height:1.6;user-select:none}
+button{font-family:inherit;cursor:pointer;border:none;outline:none}
+input,textarea{font-family:inherit;outline:none;border:none;background:none}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
+
+.shell{display:flex;height:100vh;overflow:hidden;background:var(--bg)}
+.panels{display:flex;width:100%;height:100%;overflow:hidden;position:relative;z-index:1}
+.panel{height:100%;overflow:hidden;display:flex;flex-direction:column;border-right:1px solid var(--bd);position:relative;flex-shrink:0}
+.panel:last-child{border-right:none}
+.panel.collapsing{transition:width 0.3s cubic-bezier(0.4,0,0.2,1)}
+
+/* drag handles */
+.drag-handle{width:5px;height:100%;flex-shrink:0;cursor:col-resize;background:transparent;z-index:50;position:relative;transition:background 0.15s}
+.drag-handle:hover{background:rgba(94,231,223,0.25)}
+.drag-handle.dragging{background:rgba(94,231,223,0.45)}
+.drag-handle::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:14px;height:48px;border-radius:7px;background:var(--bd2);pointer-events:none;transition:background 0.15s}
+.drag-handle:hover::after,.drag-handle.dragging::after{background:var(--accent)}
+
+/* panel header */
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--bd);flex-shrink:0;min-height:38px;background:var(--bg2)}
+.panel-title{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--t2);white-space:nowrap}
+.panel-actions{display:flex;gap:3px;align-items:center;flex-shrink:0}
+.ph-btn{width:21px;height:21px;border-radius:5px;background:transparent;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;color:var(--t3);transition:all 0.15s;font-size:10px;flex-shrink:0}
+.ph-btn:hover{background:var(--bg4);color:var(--t1);border-color:var(--bd2)}
+.ph-btn svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.move-btn{padding:2px 5px;border-radius:4px;font-size:9px;font-family:var(--mono);background:transparent;border:1px solid var(--bd);color:var(--t3);transition:all 0.15s;white-space:nowrap}
+.move-btn:hover{color:var(--accent);border-color:var(--accent)}
+.chip-btn{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;background:var(--bg3);border:1px solid var(--bd);color:var(--t3);cursor:pointer;transition:all 0.15s;font-family:var(--mono)}
+.chip-btn.active{background:var(--ag);border-color:var(--accent);color:var(--accent)}
+.chip-btn.purple.active{background:rgba(180,144,255,0.1);border-color:var(--accent2);color:var(--accent2)}
+.chip-btn.red.active{background:rgba(248,113,113,0.1);border-color:var(--red);color:var(--red)}
+.chip-btn.amber.active{background:rgba(251,191,36,0.1);border-color:var(--amber);color:var(--amber)}
+
+/* collapsed tab */
+.collapsed-tab{position:fixed;top:50%;transform:translateY(-50%);width:20px;height:70px;background:var(--bg3);border:1px solid var(--bd2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:100;transition:all 0.2s;writing-mode:vertical-rl;font-size:9px;color:var(--t3);letter-spacing:0.1em;font-family:var(--display);font-weight:600;text-transform:uppercase}
+.collapsed-tab:hover{background:var(--bg4);color:var(--accent);border-color:var(--accent)}
+.collapsed-tab.left-tab{left:0;border-radius:0 6px 6px 0;border-left:none}
+.collapsed-tab.right-tab{right:0;border-radius:6px 0 0 6px;border-right:none}
+
+/* ── HISTORY ── */
+#panel-history{background:var(--bg2)}
+.history-search{padding:7px 11px 9px;border-bottom:1px solid var(--bd)}
+.history-search input{width:100%;background:var(--bg3);border:1px solid var(--bd);border-radius:var(--r);padding:5px 9px;color:var(--t1);font-size:12px;transition:border-color 0.2s}
+.history-search input:focus{border-color:var(--bd2)}
+.history-search input::placeholder{color:var(--t3)}
+.history-content{flex:1;overflow-y:auto;padding:7px 9px}
+.history-new-btn{margin:7px 11px;padding:7px;border-radius:var(--r);background:var(--ag);border:1px solid var(--bd2);color:var(--accent);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px;justify-content:center;transition:all 0.2s;width:calc(100% - 22px)}
+.history-new-btn:hover{background:var(--ad);border-color:var(--accent)}
+.history-date{font-size:10px;color:var(--t3);font-weight:500;letter-spacing:0.08em;text-transform:uppercase;padding:8px 3px 5px;font-family:var(--mono)}
+.history-item{padding:7px 9px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;margin-bottom:3px;transition:all 0.15s}
+.history-item:hover{background:var(--bg3);border-color:var(--bd)}
+.history-item.active{background:var(--bg4);border-color:var(--bd2)}
+.history-item-title{font-size:12px;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
+.history-item-meta{font-size:10px;color:var(--t3);font-family:var(--mono)}
+
+/* ── CHAT ── */
+#panel-chat{background:var(--bg)}
+.chat-status{padding:5px 11px;background:var(--bg2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:sPulse 2s ease-in-out infinite;flex-shrink:0}
+@keyframes sPulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.status-text{font-size:11px;color:var(--t3);font-family:var(--mono);flex:1}
+.status-dot.offline{background:var(--red);box-shadow:0 0 6px var(--red)}
+.status-dot.thinking{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+/* TTS mute btn in status bar */
+.tts-btn{padding:2px 7px;border-radius:12px;font-size:10px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--bd);color:var(--t3);cursor:pointer;transition:all 0.15s;flex-shrink:0}
+.tts-btn:hover{border-color:var(--bd2);color:var(--t2)}
+.tts-btn.muted{background:rgba(248,113,113,0.1);border-color:var(--red);color:var(--red)}
+
+.chat-messages{flex:1;overflow-y:auto;padding:14px 13px;display:flex;flex-direction:column;gap:11px}
+.chat-messages::-webkit-scrollbar{width:2px}
+.chat-messages::-webkit-scrollbar-thumb{background:var(--bd)}
+.msg{display:flex;gap:7px;animation:msgIn 0.26s cubic-bezier(0.34,1.56,0.64,1)}
+@keyframes msgIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.msg.user{flex-direction:row-reverse}
+
+/* avatar with hover name reveal */
+.msg-avatar-wrap{position:relative;flex-shrink:0;margin-top:2px}
+.msg-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;cursor:default;transition:all 0.2s}
+.msg.vega .msg-avatar{background:var(--ag);border:1px solid var(--bd2);color:var(--accent);font-family:var(--display)}
+.msg.user .msg-avatar{background:rgba(180,144,255,0.12);border:1px solid rgba(180,144,255,0.2);color:var(--accent2)}
+.avatar-tooltip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--bd2);border-radius:6px;padding:3px 8px;font-size:10px;font-family:var(--mono);color:var(--t1);white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.2s;z-index:10}
+.msg.user .avatar-tooltip{left:auto;right:50%;transform:translateX(50%)}
+.msg-avatar-wrap:hover .avatar-tooltip{opacity:1}
+
+.msg-bubble{max-width:82%;padding:8px 12px;border-radius:13px;font-size:13px;line-height:1.65;user-select:text;cursor:text}
+.msg.vega .msg-bubble{background:var(--bg3);border:1px solid var(--bd);border-bottom-left-radius:3px;color:var(--t1)}
+.msg.user .msg-bubble{background:var(--bg4);border:1px solid var(--bd2);border-bottom-right-radius:3px;color:var(--t1)}
+.msg-time{font-size:10px;color:var(--t3);font-family:var(--mono);margin-top:3px;padding:0 3px}
+.msg.user .msg-time{text-align:right}
+.typing-dots{display:flex;gap:4px;padding:2px 0}
+.typing-dots span{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:tB 1.2s ease-in-out infinite}
+.typing-dots span:nth-child(2){animation-delay:0.2s}
+.typing-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes tB{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-5px);opacity:1}}
+.msg-bubble code{font-family:var(--mono);font-size:11.5px;background:var(--bg4);padding:1px 5px;border-radius:4px;color:var(--accent)}
+.msg-bubble pre{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:9px;margin:6px 0;overflow-x:auto;font-family:var(--mono);font-size:11px;user-select:text}
+.msg-bubble strong{font-weight:600}
+
+/* task status bar */
+.task-bar{padding:5px 11px;background:rgba(94,231,223,0.04);border-bottom:1px solid rgba(94,231,223,0.08);font-size:11px;font-family:var(--mono);color:var(--accent);display:none;align-items:center;gap:7px;flex-shrink:0}
+.task-bar.active{display:flex}
+.task-spinner{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--accent);border-top-color:transparent;animation:spin 0.7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* input area */
+.chat-input-area{padding:9px 11px;border-top:1px solid var(--bd);background:var(--bg2);flex-shrink:0}
+.lang-row{display:flex;gap:4px;margin-bottom:6px}
+.lang-chip{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;background:var(--bg3);border:1px solid var(--bd);color:var(--t3);cursor:pointer;transition:all 0.15s;font-family:var(--mono)}
+.lang-chip.active{background:var(--ag);border-color:var(--accent);color:var(--accent)}
+.chat-input-row{display:flex;align-items:flex-end;gap:6px;background:var(--bg3);border:1px solid var(--bd2);border-radius:var(--r2);padding:6px 8px;transition:border-color 0.2s}
+.chat-input-row:focus-within{border-color:var(--accent)}
+.chat-textarea{flex:1;resize:none;color:var(--t1);font-size:13px;line-height:1.5;max-height:100px;min-height:20px;overflow-y:auto;background:transparent}
+.chat-textarea::placeholder{color:var(--t3)}
+.input-btns{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.input-btn{width:29px;height:29px;border-radius:var(--r);background:transparent;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;color:var(--t2);transition:all 0.15s}
+.input-btn:hover{background:var(--bg4);border-color:var(--bd2);color:var(--t1)}
+.input-btn.send{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.input-btn.send:hover{opacity:0.85}
+.input-btn.mic-active{background:rgba(248,113,113,0.15);border-color:var(--red);color:var(--red);animation:micP 1s ease-in-out infinite}
+@keyframes micP{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.4)}50%{box-shadow:0 0 0 5px rgba(248,113,113,0)}}
+.input-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.input-btn.send svg{stroke:var(--bg)}
+
+/* ── VEGA PANEL ── */
+#panel-vega{background:var(--bg);position:relative;overflow:hidden}
+.vega-mood-overlay{position:absolute;inset:0;pointer-events:none;z-index:1;transition:background 1.2s ease;background:transparent}
+#panel-vega .panel-header{background:transparent;border-bottom-color:rgba(255,255,255,0.04);position:relative;z-index:5}
+.vega-inner{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:14px;gap:10px}
+.vega-name{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.vega-face-wrap{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+#vegaCanvas{display:block;border-radius:20px;transition:filter 0.8s ease}
+.emotion-label{font-family:var(--mono);font-size:10px;color:var(--t3);letter-spacing:0.1em;text-transform:uppercase;transition:all 0.5s;text-align:center}
+.vega-status{font-family:var(--mono);font-size:11px;color:var(--t3);letter-spacing:0.08em;text-transform:uppercase;transition:color 0.5s;text-align:center;min-height:16px}
+
+/* dashboard */
+.vega-dashboard{display:none;width:100%;gap:6px}
+.vega-dashboard.visible{display:grid;grid-template-columns:1fr 1fr}
+.dash-card{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r2);padding:8px 10px;min-height:52px}
+.dash-card.full{grid-column:1/-1}
+.dash-label{font-size:9px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:2px}
+.dash-val{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--t1);transition:color 0.5s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-val.sm{font-size:11px}
+.dash-val.accent{color:var(--accent)}
+.mood-dots{display:flex;gap:4px;margin-top:4px;align-items:center}
+.mood-dot{width:8px;height:8px;border-radius:50%;opacity:0.85;transition:all 0.4s;flex-shrink:0}
+.task-steps{margin-top:4px;display:flex;flex-direction:column;gap:2px}
+.task-step{font-size:10px;font-family:var(--mono);color:var(--t3);display:flex;align-items:center;gap:5px;transition:color 0.3s}
+.task-step.done{color:var(--green)}
+.task-step.active{color:var(--accent)}
+.task-step-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* dev panel */
+#devPanel{position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:200;display:none;gap:16px;backdrop-filter:blur(12px);padding:16px}
+#devPanel.open{display:grid;grid-template-columns:200px 1fr;grid-template-rows:auto 1fr auto}
+.dev-title{font-family:var(--display);font-size:13px;font-weight:700;color:var(--accent);letter-spacing:0.15em;text-transform:uppercase;grid-column:1/-1}
+/* Left: live preview */
+#devPreview{background:var(--bg2);border:1px solid var(--bd2);border-radius:var(--r2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px}
+#devPreviewCanvas{border-radius:12px;display:block}
+#devPreviewLabel{font-family:var(--mono);font-size:11px;color:var(--accent);text-align:center;letter-spacing:0.08em;text-transform:uppercase}
+/* Right: grid of buttons */
+.dev-grid{display:flex;flex-wrap:wrap;gap:5px;align-content:start;overflow-y:auto;padding:2px}
+.dev-btn{padding:5px 11px;border-radius:7px;font-size:11px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--bd2);color:var(--t2);cursor:pointer;transition:all 0.15s}
+.dev-btn:hover{background:var(--bg4);color:var(--t1);border-color:var(--bd3)}
+.dev-btn.active{border-color:var(--accent);color:var(--accent);background:var(--ag)}
+.dev-hint{font-family:var(--mono);font-size:10px;color:var(--t3);grid-column:1/-1;text-align:center}
+.dev-close{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:6px;background:var(--bg3);border:1px solid var(--bd2);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all 0.15s}
+.dev-close:hover{background:var(--bg4);color:var(--t1)}
+
+/* vega input bar */
+.vega-input-bar{width:100%;padding:8px 4px 2px;flex-shrink:0}
+.vega-lang-row{display:flex;gap:4px;margin-bottom:6px;align-items:center}
+.vega-input-row{display:flex;align-items:flex-end;gap:6px;background:var(--bg3);border:1px solid var(--bd2);border-radius:var(--r2);padding:6px 8px;transition:border-color 0.2s}
+.vega-input-row:focus-within{border-color:var(--accent)}
+.vega-textarea{flex:1;resize:none;color:var(--t1);font-size:13px;line-height:1.5;max-height:80px;min-height:20px;overflow-y:auto;background:transparent;font-family:var(--ui)}
+.vega-textarea::placeholder{color:var(--t3)}
+
+/* toast */
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--bg3);border:1px solid var(--bd2);border-radius:var(--r2);padding:8px 15px;font-size:12px;color:var(--t1);z-index:300;transition:transform 0.26s cubic-bezier(0.34,1.56,0.64,1);pointer-events:none;font-family:var(--mono);white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="panels" id="panelsContainer">
+
+  <!-- PANEL 1: HISTORY -->
+  <div class="panel" id="panel-history" data-name="History">
+    <div class="panel-header">
+      <span class="panel-title">History</span>
+      <div class="panel-actions">
+        <button class="move-btn" onclick="movePanel('panel-history','left')">◀</button>
+        <button class="move-btn" onclick="movePanel('panel-history','right')">▶</button>
+        <button class="ph-btn" onclick="collapsePanel('panel-history')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="history-search"><input type="text" placeholder="Search chats..." id="historySearch" oninput="filterHistory(this.value)"/></div>
+    <button class="history-new-btn" onclick="newChat()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      New Chat
+    </button>
+    <div class="history-content" id="historyList"></div>
+  </div>
+
+  <!-- PANEL 2: VEGA (center by default) -->
+  <div class="panel" id="panel-vega" data-name="Vega">
+    <div class="vega-mood-overlay" id="vegaMoodOverlay"></div>
+    <div class="panel-header">
+      <span class="panel-title" style="color:var(--accent)">Vega</span>
+      <div class="panel-actions">
+        <button class="chip-btn" id="modeBtn2" onclick="setVegaMode(2)">Clean</button>
+        <button class="chip-btn" id="modeBtn3" onclick="setVegaMode(3)">Dash</button>
+        <button class="chip-btn purple" id="eyeStyleBtn" onclick="toggleEyeStyle()">Pupils</button>
+        <button class="chip-btn amber" id="musicBtn" onclick="toggleMusic()" title="Music mode">♪</button>
+        <button class="chip-btn" id="devTriggerBtn" onclick="openDevPanel()" title="Test expressions">🎭</button>
+        <button class="move-btn" onclick="movePanel('panel-vega','left')">◀</button>
+        <button class="move-btn" onclick="movePanel('panel-vega','right')">▶</button>
+        <button class="ph-btn" onclick="collapsePanel('panel-vega')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="vega-inner" id="vegaInner">
+      <div class="vega-name">VEGA</div>
+      <div class="vega-face-wrap" id="vegaFaceWrap">
+        <canvas id="vegaCanvas" width="280" height="180"></canvas>
+      </div>
+      <div class="emotion-label" id="emotionLabel">Neutral</div>
+      <div class="vega-status" id="vegaStatus">Online · Ready</div>
+
+      <!-- Vega input bar (below face) -->
+      <div class="vega-input-bar" id="vegaInputBar">
+        <div class="vega-lang-row">
+          <button class="lang-chip active" data-lang="en-US" data-tts="en-US" onclick="selectLang(this)">EN</button>
+          <button class="lang-chip" data-lang="te-IN" data-tts="te-IN" onclick="selectLang(this)">తె</button>
+          <button class="lang-chip" data-lang="hi-IN" data-tts="hi-IN" onclick="selectLang(this)">हि</button>
+          <button class="tts-btn" id="ttsBtn" onclick="toggleTTS()" title="Toggle voice" style="margin-left:4px">🔊</button>
+        </div>
+        <div class="vega-input-row">
+          <textarea class="vega-textarea" id="vegaInput" placeholder="Ask Vega..." rows="1"
+            onkeydown="handleVegaKey(event)" oninput="autoResizeVega(this)"></textarea>
+          <div class="input-btns">
+            <button class="input-btn" id="vegaMicBtn" onclick="toggleMic()" title="Voice input">
+              <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
+            </button>
+            <button class="input-btn send" onclick="sendMessage()" title="Send">
+              <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="vega-dashboard" id="vegaDashboard">
+        <div class="dash-card">
+          <div class="dash-label">Time & Date</div>
+          <div class="dash-val accent" id="dashTime">--:--</div>
+          <div class="dash-val sm" id="dashDate" style="color:var(--t3);margin-top:1px">---</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">Battery</div>
+          <div class="dash-val" id="dashBattery" style="color:var(--green)">--%</div>
+          <div class="dash-val sm" id="dashBatteryStatus" style="color:var(--t3);margin-top:1px">checking...</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">Session</div>
+          <div class="dash-val accent" id="dashSession">00:00</div>
+          <div class="dash-val sm" id="dashMsgCount" style="color:var(--t3);margin-top:1px">0 messages</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-label">Mood</div>
+          <div class="dash-val" id="dashMood" style="color:var(--accent)">Neutral</div>
+          <div class="mood-dots" id="moodDots"></div>
+        </div>
+        <div class="dash-card full">
+          <div class="dash-label">Task Status</div>
+          <div class="task-steps" id="dashTaskSteps">
+            <div class="task-step" style="color:var(--t3);font-size:10px;font-family:var(--mono)">No active task</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL 3: CONVERSATION (right by default) -->
+  <div class="panel" id="panel-chat" data-name="Chat">
+    <div class="panel-header">
+      <span class="panel-title">Conversation</span>
+      <div class="panel-actions">
+        <button class="move-btn" onclick="movePanel('panel-chat','left')">◀</button>
+        <button class="move-btn" onclick="movePanel('panel-chat','right')">▶</button>
+        <button class="ph-btn" onclick="collapsePanel('panel-chat')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+    <div class="chat-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Connecting...</span>
+    </div>
+    <div class="task-bar" id="taskBar">
+      <div class="task-spinner"></div>
+      <span id="taskBarText">Working...</span>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+  </div>
+
+</div>
+</div>
+
+<div id="collapsedTabs"></div>
+
+<!-- Dev panel -->
+<div id="devPanel">
+  <button class="dev-close" onclick="closeDevPanel()">✕</button>
+  <div class="dev-title">Expression Tester — click any to preview live</div>
+  <div id="devPreview">
+    <canvas id="devPreviewCanvas" width="200" height="128"></canvas>
+    <div id="devPreviewLabel">Neutral</div>
+  </div>
+  <div class="dev-grid" id="devGrid"></div>
+  <div class="dev-hint">Press ~ or Esc to close</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+//  CANVAS FACE ENGINE
+// ════════════════════════════════════════════
+const canvas=document.getElementById('vegaCanvas');
+const ctx=canvas.getContext('2d');
+const CW=280,CH=180,CX=CW/2,CY=CH/2;
+const EYE_W=76,EYE_H=58,EYE_GAP=30;
+const EYE_BR_ROUND=14,EYE_BR_SQUARE=4;
+const EYE_LX=CX-EYE_W-EYE_GAP/2;
+const EYE_RX=CX+EYE_GAP/2;
+const EYE_Y=CY-EYE_H/2;
+
+let eyeStyle='pupils'; // 'pupils' | 'square'
+
+const E={
+  lx:EYE_LX,ly:EYE_Y,lw:EYE_W,lh:EYE_H,lbr:EYE_BR_ROUND,
+  rx:EYE_RX,ry:EYE_Y,rw:EYE_W,rh:EYE_H,rbr:EYE_BR_ROUND,
+  gap:EYE_GAP,tiredH:0,angryH:0,happyOff:0,
+  pupilX:0.5,pupilY:0.5,pupilSize:0.36,
+  lxC:EYE_LX,lyC:EYE_Y,lwC:EYE_W,lhC:1,lbrC:EYE_BR_ROUND,
+  rxC:EYE_RX,ryC:EYE_Y,rwC:EYE_W,rhC:1,rbrC:EYE_BR_ROUND,
+  gapC:EYE_GAP,tiredHC:0,angryHC:0,happyOffC:0,
+  pupilXC:0.5,pupilYC:0.5,pupilSizeC:0.36,
+  color:'#5ee7df',pupilColor:'#07090f',glintColor:'rgba(255,255,255,0.85)',
+  isBlinking:false,heartPupils:false,
+  questionMode:false,batteryMode:false,batteryLevel:1,
+  clockMode:false,clockHover:false,blushMode:false,sleepMode:false,
+  hFlicker:false,hAmp:0,hTog:false,
+  vFlicker:false,vAmp:0,vTog:false,
+};
+
+function getBR(){return eyeStyle==='square'?EYE_BR_SQUARE:EYE_BR_ROUND;}
+
+function resetEyeTargets(){
+  E.lx=EYE_LX;E.ly=EYE_Y;E.lw=EYE_W;E.lh=EYE_H;E.lbr=getBR();
+  E.rx=EYE_RX;E.ry=EYE_Y;E.rw=EYE_W;E.rh=EYE_H;E.rbr=getBR();
+  E.gap=EYE_GAP;E.tiredH=0;E.angryH=0;E.happyOff=0;
+  E.pupilX=0.5;E.pupilY=0.5;E.pupilSize=0.36;
+  E.hFlicker=false;E.vFlicker=false;
+  E.heartPupils=false;E.questionMode=false;
+  E.batteryMode=false;E.clockMode=false;E.blushMode=false;E.sleepMode=false;
+}
+
+const LP=0.11;
+function lp(a,b,t){return a+(b-a)*t;}
+function interpEyes(){
+  const s=LP;
+  E.lwC=lp(E.lwC,E.lw,s);E.lhC=lp(E.lhC,E.lh,s);
+  E.lxC=lp(E.lxC,E.lx,s);E.lyC=lp(E.lyC,E.ly,s);E.lbrC=lp(E.lbrC,E.lbr,s);
+  E.rwC=lp(E.rwC,E.rw,s);E.rhC=lp(E.rhC,E.rh,s);
+  E.rxC=lp(E.rxC,E.rx,s);E.ryC=lp(E.ryC,E.ry,s);E.rbrC=lp(E.rbrC,E.rbr,s);
+  E.gapC=lp(E.gapC,E.gap,s);
+  E.tiredHC=lp(E.tiredHC,E.tiredH,s*0.65);
+  E.angryHC=lp(E.angryHC,E.angryH,s*0.65);
+  E.happyOffC=lp(E.happyOffC,E.happyOff,s*0.65);
+  E.pupilXC=lp(E.pupilXC,E.pupilX,s*1.5);
+  E.pupilYC=lp(E.pupilYC,E.pupilY,s*1.5);
+  E.pupilSizeC=lp(E.pupilSizeC,E.pupilSize,s);
+}
+
+function rRect(x,y,w,h,r,fill,stroke){
+  r=Math.max(0,Math.min(r,w/2,h/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+  if(fill){ctx.fillStyle=fill;ctx.fill();}
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1.5;ctx.stroke();}
+}
+
+function drawHeart(x,y,sz,color){
+  ctx.save();ctx.translate(x,y);ctx.fillStyle=color;ctx.beginPath();
+  const s=sz*0.5;
+  ctx.moveTo(0,s*0.4);ctx.bezierCurveTo(-s*0.1,s*0.1,-s,-s*0.2,-s,-s*0.6);
+  ctx.bezierCurveTo(-s,-s,-s*0.3,-s*1.2,0,-s*0.4);
+  ctx.bezierCurveTo(s*0.3,-s*1.2,s,-s,s,-s*0.6);
+  ctx.bezierCurveTo(s,-s*0.2,s*0.1,s*0.1,0,s*0.4);
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+
+function drawBattery(cx,cy,level){
+  const bw=130,bh=52,br=8,x=cx-bw/2,y=cy-bh/2;
+  rRect(x,y,bw,bh,br,null,'rgba(255,255,255,0.25)');
+  rRect(x+bw+2,cy-9,7,18,3,'rgba(255,255,255,0.25)');
+  const fw=Math.max(4,(bw-8)*level);
+  rRect(x+4,y+4,fw,bh-8,br-2,level>0.5?'#4ade80':level>0.2?'#fbbf24':'#f87171');
+  ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font='bold 14px "JetBrains Mono",monospace';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(Math.round(level*100)+'%',cx,cy);
+}
+
+function drawQuestion(cx,cy){
+  ctx.save();ctx.fillStyle=E.color;ctx.font='bold 90px "Syne",sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=0.9;ctx.fillText('?',cx,cy+4);ctx.restore();
+}
+
+function drawClock(cx,cy,hover){
+  const r=52,now=new Date(),h=now.getHours()%12,m=now.getMinutes(),s=now.getSeconds();
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='rgba(7,9,15,0.85)';ctx.fill();
+  ctx.strokeStyle=E.color;ctx.lineWidth=1.5;ctx.stroke();
+  for(let i=0;i<12;i++){
+    const a=(i/12)*Math.PI*2-Math.PI/2,r1=r-4,r2=i%3===0?r-11:r-7;
+    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);
+    ctx.strokeStyle=i%3===0?E.color:'rgba(255,255,255,0.18)';ctx.lineWidth=i%3===0?1.5:0.8;ctx.stroke();
+  }
+  if(hover){
+    ctx.fillStyle='rgba(7,9,15,0.9)';ctx.beginPath();ctx.arc(cx,cy,r-5,0,Math.PI*2);ctx.fill();
+    const hh=now.getHours().toString().padStart(2,'0'),mm=now.getMinutes().toString().padStart(2,'0');
+    ctx.fillStyle=E.color;ctx.font='bold 21px "JetBrains Mono",monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(hh+':'+mm,cx,cy-5);
+    ctx.font='10px "JetBrains Mono",monospace';ctx.fillStyle='rgba(94,231,223,0.55)';ctx.fillText(now.getHours()<12?'AM':'PM',cx,cy+12);
+  } else {
+    const ha=(h/12+m/720)*Math.PI*2-Math.PI/2;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(ha)*(r*0.5),cy+Math.sin(ha)*(r*0.5));ctx.strokeStyle='#e8edf8';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.stroke();
+    const ma=(m/60)*Math.PI*2-Math.PI/2;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(ma)*(r*0.72),cy+Math.sin(ma)*(r*0.72));ctx.strokeStyle='#e8edf8';ctx.lineWidth=1.8;ctx.stroke();
+    const sa=(s/60)*Math.PI*2-Math.PI/2;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(sa)*(r*0.78),cy+Math.sin(sa)*(r*0.78));ctx.strokeStyle=E.color;ctx.lineWidth=1;ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=E.color;ctx.fill();
+  }
+}
+
+function drawBlush(lx,lw,rx,rw,ey,eh){
+  ctx.save();ctx.globalAlpha=0.32;
+  const lg=ctx.createRadialGradient(lx+lw*0.12,ey+eh+7,1,lx+lw*0.12,ey+eh+7,22);
+  lg.addColorStop(0,'#f472b6');lg.addColorStop(1,'rgba(244,114,182,0)');
+  ctx.fillStyle=lg;ctx.beginPath();ctx.ellipse(lx+lw*0.12,ey+eh+7,22,13,0,0,Math.PI*2);ctx.fill();
+  const rg=ctx.createRadialGradient(rx+rw*0.88,ey+eh+7,1,rx+rw*0.88,ey+eh+7,22);
+  rg.addColorStop(0,'#f472b6');rg.addColorStop(1,'rgba(244,114,182,0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(rx+rw*0.88,ey+eh+7,22,13,0,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+// ── Eyebrow drawing — full expressive set ──
+// Each emotion gets distinct brow shapes. Brows carry the emotion in square mode.
+function drawEyebrow(x,y,w,type,color,ts){
+  ctx.save();ctx.strokeStyle=color;ctx.lineCap='round';ctx.lineJoin='round';
+  const bx=x+w*0.08, bw=w*0.84, by=y-10;
+  ctx.beginPath();
+  switch(type){
+    // Flat neutral
+    case'neutral': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by); break;
+    // Angry: left brow — high outer, low inner (slopes down inward)
+    case'angry_l': ctx.lineWidth=3.5; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+5); break;
+    // Angry: right brow — low inner, high outer
+    case'angry_r': ctx.lineWidth=3.5; ctx.moveTo(bx,by+5); ctx.lineTo(bx+bw,by-4); break;
+    // Sad: left brow — low outer, raised inner
+    case'sad_l': ctx.lineWidth=3; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by-3); break;
+    // Sad: right brow — raised inner, low outer
+    case'sad_r': ctx.lineWidth=3; ctx.moveTo(bx,by-3); ctx.lineTo(bx+bw,by+3); break;
+    // Surprised: arched high
+    case'surprised':
+      ctx.lineWidth=3;
+      ctx.arc(bx+bw/2, by+12, bw/2, Math.PI*1.15, Math.PI*1.85, false);
+      break;
+    // Worried/nervous: inner corners raised like /\ shape
+    case'worried_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
+    case'worried_r': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
+    // Confused: left=sad, right=raised
+    case'confused_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by-4); break;
+    case'confused_r': ctx.lineWidth=3; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+2); break;
+    // Happy: gentle upward curve
+    case'happy':
+      ctx.lineWidth=3;
+      ctx.moveTo(bx,by+1);
+      ctx.quadraticCurveTo(bx+bw*0.5,by-4,bx+bw,by+1);
+      break;
+    // Excited: high arch
+    case'excited':
+      ctx.lineWidth=3.5;
+      ctx.arc(bx+bw/2,by+14,bw/2,Math.PI*1.1,Math.PI*1.9,false);
+      break;
+    // Cool: one brow flat low (relaxed)
+    case'cool': ctx.lineWidth=3; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by+3); break;
+    // Wink side: slight raise
+    case'wink': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.5,by-5,bx+bw,by); break;
+    // Unamused: flat with slight droop
+    case'unamused': ctx.lineWidth=3; ctx.moveTo(bx,by+4); ctx.lineTo(bx+bw,by+4); break;
+    // Pleading: strong inner raise
+    case'pleading_l': ctx.lineWidth=3; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.4,by-8,bx+bw,by); break;
+    case'pleading_r': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.6,by-8,bx+bw,by+4); break;
+    // Thinking: one side angled
+    case'thinking_l': ctx.lineWidth=3; ctx.moveTo(bx,by+1); ctx.lineTo(bx+bw,by-3); break;
+    case'thinking_r': ctx.lineWidth=3; ctx.moveTo(bx,by-3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by-3); break;
+    // Sarcastic: one flat, one raised corner
+    case'sarc_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by+2); break;
+    case'sarc_r': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw*0.6,by+2); ctx.lineTo(bx+bw,by-4); break;
+    // Crying: heavy sad droop
+    case'cry_l': ctx.lineWidth=3.5; ctx.moveTo(bx,by+1); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+3); break;
+    case'cry_r': ctx.lineWidth=3.5; ctx.moveTo(bx,by+3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+1); break;
+    // Hit/ouch: strong furrowed squeeze
+    case'ouch_l': ctx.lineWidth=4; ctx.moveTo(bx,by-2); ctx.quadraticCurveTo(bx+bw*0.5,by+6,bx+bw,by+4); break;
+    case'ouch_r': ctx.lineWidth=4; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.5,by+6,bx+bw,by-2); break;
+    default: ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by); break;
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Eyebrow dispatcher for square mode — maps emotion to brow types ──
+function drawSquareEyebrows(ts){
+  if(eyeStyle!=='square') return;
+  let lType='neutral', rType='neutral';
+  switch(currentEmotion){
+    case'angry':     lType='angry_l';   rType='angry_r';   break;
+    case'frustrated':lType='angry_l';   rType='angry_r';   break;
+    case'sad':       lType='sad_l';     rType='sad_r';     break;
+    case'crying':    lType='cry_l';     rType='cry_r';     break;
+    case'surprised': lType='surprised'; rType='surprised'; break;
+    case'speechless':lType='surprised'; rType='surprised'; break;
+    case'nervous':   lType='worried_l'; rType='worried_r'; break;
+    case'confused':  lType='confused_l';rType='confused_r';break;
+    case'thinking':  lType='thinking_l';rType='thinking_r';break;
+    case'happy':     lType='happy';     rType='happy';     break;
+    case'love':      lType='happy';     rType='happy';     break;
+    case'blush':     lType='happy';     rType='happy';     break;
+    case'excited':   lType='excited';   rType='excited';   break;
+    case'laugh':     lType='excited';   rType='excited';   break;
+    case'cool':      lType='cool';      rType='cool';      break;
+    case'chilling':  lType='cool';      rType='cool';      break;
+    case'wink':      lType='wink';      rType='neutral';   break;
+    case'unamused':  lType='unamused';  rType='unamused';  break;
+    case'sarcastic': lType='sarc_l';    rType='sarc_r';    break;
+    case'pleading':  lType='pleading_l';rType='pleading_r';break;
+    case'ouch':      lType='ouch_l';    rType='ouch_r';    break;
+    case'hurt':      lType='ouch_l';    rType='ouch_r';    break;
+    case'alert':     lType='surprised'; rType='surprised'; break;
+    case'curious':   lType='neutral';   rType='excited';   break;
+    case'music':     lType='happy';     rType='happy';     break;
+    case'working':   lType='thinking_l';rType='thinking_l';break;
+    case'sleepy':    lType='sad_l';     rType='sad_r';     break;
+  }
+  const col=E.color+'dd';
+  // Apply socket offset in square mode
+  const lx=E.lxC+ES.xC, ly=E.lyC+ES.yC;
+  const rx=E.rxC+ES.xC, ry=E.ryC+ES.yC;
+  drawEyebrow(lx,ly,E.lwC,lType,col,ts);
+  drawEyebrow(rx,ry,E.rwC,rType,col,ts);
+}
+
+// ── Dizzy spiral inside eye ──
+function drawDizzyEye(x,y,w,h,br){
+  // Draw eye base
+  rRect(x,y,w,h,br,E.color);
+  // Draw X marks inside — like 😵
+  ctx.save();
+  ctx.globalCompositeOperation='destination-out';
+  ctx.strokeStyle='#000';ctx.lineWidth=Math.min(w,h)*0.18;ctx.lineCap='round';
+  const cx2=x+w*0.5,cy2=y+h*0.5,s=Math.min(w,h)*0.28;
+  ctx.beginPath();ctx.moveTo(cx2-s,cy2-s);ctx.lineTo(cx2+s,cy2+s);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx2+s,cy2-s);ctx.lineTo(cx2-s,cy2+s);ctx.stroke();
+  ctx.restore();
+}
+
+// ── Scanning beam per eye ──
+let scanLineY=0; // normalized 0-1 position
+function drawScanBeam(x,y,w,h,br,ts){
+  // Draw eye base
+  rRect(x,y,w,h,br,E.color);
+  // Clip to eye bounds and draw scan line
+  ctx.save();
+  ctx.beginPath();
+  // clip path = eye shape
+  const r2=Math.max(0,Math.min(br,w/2,h/2));
+  ctx.moveTo(x+r2,y);ctx.lineTo(x+w-r2,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r2);
+  ctx.lineTo(x+w,y+h-r2);ctx.quadraticCurveTo(x+w,y+h,x+w-r2,y+h);
+  ctx.lineTo(x+r2,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r2);
+  ctx.lineTo(x,y+r2);ctx.quadraticCurveTo(x,y,x+r2,y);
+  ctx.closePath();ctx.clip();
+  // Scan line
+  const sy=y+scanLineY*h;
+  // Glow line
+  const grad=ctx.createLinearGradient(x,sy-4,x,sy+4);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(0.5,'rgba(0,0,0,0.7)');
+  grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=grad;ctx.fillRect(x,sy-4,w,8);
+  // Bright center line
+  ctx.strokeStyle='rgba(0,0,0,0.9)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(x,sy);ctx.lineTo(x+w,sy);ctx.stroke();
+  ctx.restore();
+}
+
+// ── Square-mode eye-socket shift (cursor tracking for no-pupil mode) ──
+const ES={xC:0,yC:0,xT:0,yT:0};
+const ES_MAX=5;
+function interpEyeSocket(){
+  ES.xC=lp(ES.xC,ES.xT,0.14);
+  ES.yC=lp(ES.yC,ES.yT,0.14);
+}
+
+function drawEye(x,y,w,h,br,tiredH,angryH,happyOff,pxR,pyR,pSize,isLeft){
+  // In square mode, shift entire eye rect by socket offset
+  if(eyeStyle==='square'){x+=ES.xC;y+=ES.yC;}
+  rRect(x,y,w,h,br,E.color);
+  if(tiredH>0.5){
+    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.beginPath();
+    if(isLeft){ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x,y+tiredH-1);}
+    else{ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x+w,y+tiredH-1);}
+    ctx.closePath();ctx.fillStyle='#000';ctx.fill();ctx.restore();
+  }
+  if(angryH>0.5){
+    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.beginPath();
+    if(isLeft){ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x+w,y+angryH-1);}
+    else{ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x,y+angryH-1);}
+    ctx.closePath();ctx.fillStyle='#000';ctx.fill();ctx.restore();
+  }
+  if(happyOff>0.5){
+    ctx.save();ctx.globalCompositeOperation='destination-out';
+    rRect(x-1,(y+h)-happyOff+1,w+2,h+4,br,'#000');ctx.restore();
+  }
+  // Pupils: only in pupils mode — square mode has NO pupil at all
+  if(eyeStyle==='pupils'){
+    if(E.heartPupils){
+      drawHeart(x+w*pxR,y+h*pyR,Math.min(w,h)*pSize*1.2,E.pupilColor);
+    } else {
+      const pr=Math.min(w,h)*pSize;
+      ctx.beginPath();ctx.arc(x+w*pxR,y+h*pyR,pr,0,Math.PI*2);ctx.fillStyle=E.pupilColor;ctx.fill();
+      ctx.beginPath();ctx.arc(x+w*pxR-pr*0.28,y+h*pyR-pr*0.28,pr*0.22,0,Math.PI*2);ctx.fillStyle=E.glintColor;ctx.fill();
+    }
+  }
+  // Square mode: no pupil drawn at all — eye socket shift handles tracking
+}
+
+// ── Headphones drawing ──
+// Drawn above/around eyes when listening expression is active
+function drawHeadphones(lx,ly,lw,rx,rw,eyeH){
+  const col=E.color;
+  const lCx=lx+lw/2, rCx=rx+rw/2;
+  const eyeMidY=ly+eyeH/2;
+  const earR=14;
+  // Ear cups sit beside the eyes (left of left eye, right of right eye)
+  const lEarX=lx-earR-4, rEarX=rx+rw+earR+4;
+  const earCupY=eyeMidY;
+  ctx.save();ctx.strokeStyle=col;ctx.lineWidth=3;ctx.lineCap='round';
+  // Left ear cup (open on right side toward eye)
+  ctx.beginPath();ctx.arc(lEarX,earCupY,earR,Math.PI*0.35,Math.PI*1.65);ctx.stroke();
+  // Right ear cup (open on left side toward eye)
+  ctx.beginPath();ctx.arc(rEarX,earCupY,earR,-Math.PI*0.65,Math.PI*0.65);ctx.stroke();
+  // Headband — arc over the top connecting both ear cups
+  const bandCX=CX, bandCY=ly-8;
+  const bandR=rEarX-CX;
+  ctx.lineWidth=2.5;ctx.beginPath();
+  ctx.arc(bandCX,bandCY+bandR*0.55,bandR,Math.PI,0,false);ctx.stroke();
+  // Soft fill on ear cups
+  ctx.globalAlpha=0.15;ctx.fillStyle=col;
+  ctx.beginPath();ctx.arc(lEarX,earCupY,earR,Math.PI*0.35,Math.PI*1.65);
+  ctx.lineTo(lEarX,earCupY);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.arc(rEarX,earCupY,earR,-Math.PI*0.65,Math.PI*0.65);
+  ctx.lineTo(rEarX,earCupY);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+
+// ── Sleep ZZZ particles ──
+let zzzParticles=[];
+function spawnZzz(){
+  zzzParticles.push({
+    x:EYE_RX+EYE_W*0.8+Math.random()*20,
+    y:EYE_Y-5+Math.random()*10,
+    vx:0.4+Math.random()*0.3,vy:-0.5-Math.random()*0.4,
+    size:8+Math.random()*8,life:100,maxLife:100,alpha:1
+  });
+}
+
+// ── Music note particles ──
+let musicNotes=[];
+const NOTE_CHARS=['♩','♪','♫','♬'];
+let musicPlaying=false;
+let musicNoteTimer=0;
+
+// ── Hit reactions ──
+let hitCount=0,hitTimer=null;
+document.getElementById('vegaFaceWrap').addEventListener('click',e=>{
+  if(currentEmotion==='sleeping'||currentEmotion==='sleepy') return;
+  hitCount++;
+  clearTimeout(hitTimer);
+  if(hitCount===1){
+    setEmotion('ouch');
+    hitTimer=setTimeout(()=>{if(hitCount<2){hitCount=0;setEmotion('neutral');}},1200);
+  } else if(hitCount===2){
+    setEmotion('hurt');
+    hitTimer=setTimeout(()=>{if(hitCount<3){hitCount=0;setEmotion('sad');}},1500);
+  } else {
+    setEmotion('crying');
+    hitCount=0;
+    hitTimer=setTimeout(()=>setEmotion('sad'),4000);
+  }
+  e.stopPropagation();
+});
+
+// ── Moods where cursor should NOT be followed ──────────────────────────────
+const NO_CURSOR_MOODS=new Set(['sad','crying','hurt','music','sleeping','unamused','dizzy']);
+
+// ── Cursor spin detection for dizzy ────────────────────────────────────────
+let cursorHistory=[];
+let dizzyTimer=null;
+let cursorIdleTimer=null;
+let cursorIsIdle=false;
+const CURSOR_IDLE_MS=5000; // 5s no movement → stop following
+
+// ── Idle eye behavior ───────────────────────────────────────────────────────
+const IDLE_EYE_MOVES=[
+  // Look left
+  ()=>{E.pupilX=0.12;E.pupilY=0.5;},
+  // Look right
+  ()=>{E.pupilX=0.88;E.pupilY=0.5;},
+  // Look up
+  ()=>{E.pupilX=0.5;E.pupilY=0.15;},
+  // Look top-left
+  ()=>{E.pupilX=0.18;E.pupilY=0.2;},
+  // Look top-right
+  ()=>{E.pupilX=0.82;E.pupilY=0.2;},
+  // Center
+  ()=>{E.pupilX=0.5;E.pupilY=0.5;},
+  // Slow blink (yawn-like)
+  ()=>{doBlink();setTimeout(doBlink,400);},
+];
+let idleEyeTimer=null;
+let idleEyeIdx=0;
+
+function startIdleEyeBehavior(){
+  if(idleEyeTimer) return;
+  function doIdleMove(){
+    if(!cursorIsIdle||NO_CURSOR_MOODS.has(currentEmotion)||currentEmotion==='sleeping'){
+      idleEyeTimer=null;return;
+    }
+    const move=IDLE_EYE_MOVES[Math.floor(Math.random()*IDLE_EYE_MOVES.length)];
+    move();
+    idleEyeTimer=setTimeout(doIdleMove,1800+Math.random()*2500);
+  }
+  idleEyeTimer=setTimeout(doIdleMove,1200);
+}
+
+function stopIdleEyeBehavior(){
+  clearTimeout(idleEyeTimer);idleEyeTimer=null;
+  // Return to center
+  E.pupilX=0.5;E.pupilY=0.5;
+}
+
+// ── Check for cursor spinning (dizzy detection) ─────────────────────────────
+function checkCursorSpin(x,y,ts){
+  cursorHistory.push({x,y,ts});
+  // Keep last 2 seconds
+  cursorHistory=cursorHistory.filter(p=>ts-p.ts<2000);
+  if(cursorHistory.length<20) return;
+  // Calculate total angle swept
+  let totalAngle=0;
+  const cx_avg=cursorHistory.reduce((s,p)=>s+p.x,0)/cursorHistory.length;
+  const cy_avg=cursorHistory.reduce((s,p)=>s+p.y,0)/cursorHistory.length;
+  for(let i=1;i<cursorHistory.length;i++){
+    const a1=Math.atan2(cursorHistory[i-1].y-cy_avg,cursorHistory[i-1].x-cx_avg);
+    const a2=Math.atan2(cursorHistory[i].y-cy_avg,cursorHistory[i].x-cx_avg);
+    let da=a2-a1;
+    if(da>Math.PI)da-=2*Math.PI;
+    if(da<-Math.PI)da+=2*Math.PI;
+    totalAngle+=Math.abs(da);
+  }
+  // If swept > 4π (2 full circles) in 2 seconds → dizzy
+  if(totalAngle>4*Math.PI&&currentEmotion!=='dizzy'){
+    setEmotion('dizzy');cursorHistory=[];
+  }
+}
+
+// ── Mouse tracking ──────────────────────────────────────────────────────────
+let mouseInWindow=true,mouseX=window.innerWidth/2,mouseY=window.innerHeight/2;
+let lastMouseMoveTs=Date.now();
+
+document.addEventListener('mousemove',e=>{
+  mouseX=e.clientX;mouseY=e.clientY;mouseInWindow=true;
+  lastActivityTime=Date.now();lastMouseMoveTs=Date.now();
+
+  // Was idle → resume cursor following
+  if(cursorIsIdle){
+    cursorIsIdle=false;
+    stopIdleEyeBehavior();
+  }
+
+  // Reset cursor idle timer
+  clearTimeout(cursorIdleTimer);
+  cursorIdleTimer=setTimeout(()=>{
+    cursorIsIdle=true;
+    startIdleEyeBehavior();
+  },CURSOR_IDLE_MS);
+
+  // Don't track cursor for restricted moods
+  if(NO_CURSOR_MOODS.has(currentEmotion)) return;
+  if(currentEmotion==='sleeping') return;
+  if(E.questionMode||E.batteryMode||E.clockMode) return;
+
+  const rect=canvas.getBoundingClientRect();
+  if(!rect.width) return;
+  const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+  const dx=mouseX-cx,dy=mouseY-cy,maxD=Math.max(rect.width,200);
+
+  if(eyeStyle==='pupils'){
+    E.pupilX=0.5+Math.max(-1,Math.min(1,dx/maxD))*0.26;
+    E.pupilY=0.5+Math.max(-1,Math.min(1,dy/maxD))*0.20;
+  } else {
+    ES.xT=Math.max(-ES_MAX,Math.min(ES_MAX,(dx/maxD)*ES_MAX));
+    ES.yT=Math.max(-ES_MAX,Math.min(ES_MAX,(dy/maxD)*ES_MAX));
+  }
+
+  // Check for dizzy spin
+  checkCursorSpin(mouseX,mouseY,Date.now());
+});
+
+document.addEventListener('mouseleave',()=>{
+  mouseInWindow=false;
+  E.pupilX=0.5;E.pupilY=0.5;
+  ES.xT=0;ES.yT=0;
+  cursorIsIdle=true;
+  startIdleEyeBehavior();
+});
+document.addEventListener('mouseenter',()=>{
+  mouseInWindow=true;cursorIsIdle=false;stopIdleEyeBehavior();
+});
+canvas.addEventListener('mouseenter',()=>{if(E.clockMode)E.clockHover=true;});
+canvas.addEventListener('mouseleave',()=>{E.clockHover=false;});
+
+// ── Draw frame ──
+let lastBlink=0,nextBlink=3000;
+let heartParticles=[],sweatDrops=[];
+let confusedShake=0,confusedDir=1;
+let laughShake=0,laughDir=1;
+let excitedBounce=0,excitedTs=0;
+let isIdle=false,idleTimer=0,nextIdle=2000;
+let workingAngle=0;
+
+function drawFrame(ts){
+  requestAnimationFrame(drawFrame);
+  ctx.clearRect(0,0,CW,CH);
+
+  if(ts-lastBlink>nextBlink&&!E.isBlinking&&!E.questionMode&&!E.batteryMode&&!E.clockMode&&!E.sleepMode){
+    doBlink();lastBlink=ts;nextBlink=2000+Math.random()*4000;
+  }
+  if(confusedShake>0){E.lx+=confusedDir*(confusedShake>12?4:2);E.rx+=confusedDir*(confusedShake>12?4:2);confusedShake--;if(confusedShake%4===0)confusedDir*=-1;}
+  if(laughShake>0){E.ly+=laughDir*(laughShake>12?3:1.5);E.ry+=laughDir*(laughShake>12?3:1.5);laughShake--;if(laughShake%3===0)laughDir*=-1;}
+  if(excitedBounce>0){const b=Math.sin((ts-excitedTs)*0.018)*2.5;E.lh=EYE_H+Math.abs(b)*1.8;E.rh=EYE_H+Math.abs(b)*1.8;excitedBounce-=0.4;if(excitedBounce<=0){E.lh=EYE_H;E.rh=EYE_H;}}
+  if(ts-idleTimer>nextIdle&&isIdle&&!E.questionMode&&!E.batteryMode&&!E.clockMode){
+    const dirs=[[0.5,0.5],[0.20,0.25],[0.80,0.25],[0.20,0.75],[0.80,0.75],[0.5,0.20],[0.5,0.80]];
+    const d=dirs[Math.floor(Math.random()*dirs.length)];
+    E.pupilX=d[0];E.pupilY=d[1];idleTimer=ts;nextIdle=1400+Math.random()*2800;
+  }
+  // working scan
+  if(currentEmotion==='working'){
+    workingAngle+=0.018;
+    E.pupilX=0.5+Math.sin(workingAngle)*0.35;
+    E.pupilY=0.55+Math.cos(workingAngle*0.4)*0.1;
+  }
+  // music sway
+  if(musicPlaying&&currentEmotion==='music'){
+    E.ly=EYE_Y+Math.sin(ts*0.003)*3;E.ry=EYE_Y+Math.sin(ts*0.003+0.5)*3;
+  }
+  let hOff=0,vOff=0;
+  if(E.hFlicker){hOff=E.hTog?E.hAmp:-E.hAmp;E.hTog=!E.hTog;}
+  if(E.vFlicker){vOff=E.vTog?E.vAmp:-E.vAmp;E.vTog=!E.vTog;}
+
+  interpEyes();
+  interpEyeSocket();
+
+  // Advance scan line
+  if(currentEmotion==='working') scanLineY=(scanLineY+0.008)%1;
+
+  if(E.questionMode){drawQuestion(CX,CY);}
+  else if(E.batteryMode){drawBattery(CX,CY,E.batteryLevel);}
+  else if(E.clockMode){drawClock(CX,CY,E.clockHover);}
+  else if(E.sleepMode){
+    // Fully closed eyes — thin horizontal lines
+    const lsx=E.lxC+ES.xC, rsx=E.rxC+ES.xC;
+    const lsy=E.lyC+ES.yC+E.lhC/2-1, rsy=E.ryC+ES.yC+E.rhC/2-1;
+    rRect(lsx,lsy,E.lwC,3,2,E.color);
+    rRect(rsx,rsy,E.rwC,3,2,E.color);
+    drawSquareEyebrows(ts);
+  } else if(currentEmotion==='dizzy'){
+    // X-eyes like 😵
+    const lx2=E.lxC+hOff+ES.xC, ly2=E.lyC+vOff+ES.yC;
+    const rx2=E.rxC+hOff+ES.xC, ry2=E.ryC+vOff+ES.yC;
+    drawDizzyEye(lx2,ly2,E.lwC,E.lhC,E.lbrC);
+    drawDizzyEye(rx2,ry2,E.rwC,E.rhC,E.rbrC);
+    drawSquareEyebrows(ts);
+  } else if(currentEmotion==='working'&&eyeStyle==='square'){
+    // Scanning beam in square mode
+    const lx3=E.lxC+hOff+ES.xC, ly3=E.lyC+vOff+ES.yC;
+    const rx3=E.rxC+hOff+ES.xC, ry3=E.ryC+vOff+ES.yC;
+    drawScanBeam(lx3,ly3,E.lwC,E.lhC,E.lbrC,ts);
+    drawScanBeam(rx3,ry3,E.rwC,E.rhC,E.rbrC,ts);
+    drawSquareEyebrows(ts);
+  } else {
+    const lx4=E.lxC+hOff, ly4=E.lyC+vOff;
+    const rx4=E.rxC+hOff, ry4=E.ryC+vOff;
+    drawEye(lx4,ly4,E.lwC,E.lhC,E.lbrC,E.tiredHC,E.angryHC,E.happyOffC,E.pupilXC,E.pupilYC,E.pupilSizeC,true);
+    drawEye(rx4,ry4,E.rwC,E.rhC,E.rbrC,E.tiredHC,E.angryHC,E.happyOffC,E.pupilXC,E.pupilYC,E.pupilSizeC,false);
+    drawSquareEyebrows(ts);
+    if(E.blushMode) drawBlush(E.lxC,E.lwC,E.rxC,E.rwC,E.lyC,E.lhC);
+    if(currentEmotion==='listening') drawHeadphones(E.lxC,E.lyC,E.lwC,E.rxC,E.rwC,E.lhC);
+  }
+
+  // Zzz particles
+  if(ts%80<16&&(currentEmotion==='sleeping'))spawnZzz();
+  zzzParticles=zzzParticles.filter(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.life--;p.alpha=p.life/p.maxLife;
+    if(p.life<=0)return false;
+    ctx.save();ctx.globalAlpha=p.alpha;ctx.fillStyle=E.color;
+    ctx.font=`bold ${p.size}px "Space Grotesk",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('z',p.x,p.y);ctx.restore();return true;
+  });
+
+  // Heart particles
+  heartParticles=heartParticles.filter(p=>{
+    p.y-=p.vy;p.x+=p.vx;p.life--;p.alpha=p.life/p.maxLife;
+    if(p.life<=0)return false;
+    ctx.save();ctx.globalAlpha=p.alpha;drawHeart(p.x,p.y,p.size,'#f472b6');ctx.restore();return true;
+  });
+
+  // Music note particles
+  if(musicPlaying){
+    if(ts-musicNoteTimer>500){
+      musicNoteTimer=ts;
+      musicNotes.push({
+        x:EYE_LX+Math.random()*(EYE_RX+EYE_W-EYE_LX),y:EYE_Y+EYE_H/2,
+        ch:NOTE_CHARS[Math.floor(Math.random()*NOTE_CHARS.length)],
+        vx:(Math.random()-0.5)*0.6,vy:1.2+Math.random()*0.8,
+        size:10+Math.random()*8,life:80,maxLife:80,alpha:1
+      });
+    }
+  }
+  musicNotes=musicNotes.filter(n=>{
+    n.y-=n.vy;n.x+=n.vx;n.life--;n.alpha=Math.min(1,n.life/20*(n.life/n.maxLife));
+    if(n.life<=0)return false;
+    ctx.save();ctx.globalAlpha=n.alpha;ctx.fillStyle='#fbbf24';
+    ctx.font=`${n.size}px "Space Grotesk",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(n.ch,n.x,n.y);ctx.restore();return true;
+  });
+
+  // Sweat drops
+  sweatDrops=sweatDrops.filter(d=>{
+    d.y+=d.vy;d.life--;if(d.life<=0)return false;
+    ctx.save();ctx.globalAlpha=d.life/d.maxLife;ctx.fillStyle='rgba(96,165,250,0.75)';
+    ctx.beginPath();ctx.arc(d.x,d.y,d.r,0,Math.PI*2);ctx.fill();ctx.restore();return true;
+  });
+
+  // Working spinner overlay
+  if(currentEmotion==='working'){
+    ctx.save();ctx.strokeStyle=E.color+'88';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(CX,CY+50,10,0,Math.PI*1.5);ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function doBlink(){
+  if(E.isBlinking||E.sleepMode)return;
+  E.isBlinking=true;const oL=E.lh,oR=E.rh;
+  E.lh=1;E.rh=1;setTimeout(()=>{E.lh=oL;E.rh=oR;E.isBlinking=false;},190);
+}
+
+function setEyeColor(c){E.color=c;canvas.style.filter=`drop-shadow(0 0 18px ${c}35)`;}
+function setMoodOverlay(color,opacity){
+  const el=document.getElementById('vegaMoodOverlay');if(!el)return;
+  el.style.background=color?`${color}${Math.round(opacity*255).toString(16).padStart(2,'0')}`:'transparent';
+}
+
+// ── Eye style toggle ──
+function toggleEyeStyle(){
+  eyeStyle=eyeStyle==='pupils'?'square':'pupils';
+  const btn=document.getElementById('eyeStyleBtn');
+  if(btn){btn.textContent=eyeStyle==='pupils'?'Pupils':'Square';btn.classList.toggle('active',eyeStyle==='pupils');}
+  E.lbr=getBR();E.rbr=getBR();
+  showToast(eyeStyle==='pupils'?'Eyes: Pupils style':'Eyes: Square (RoboEyes classic)');
+}
+
+// ════════════════════════════════════════════
+//  EMOTIONS
+// ════════════════════════════════════════════
+let currentEmotion='neutral';
+let emotionHistory=[];
+
+function _st(t){const el=document.getElementById('vegaStatus');if(el)el.textContent=t;}
+
+const EMOTIONS={
+  neutral:{label:'Neutral',color:'#5ee7df',apply(){resetEyeTargets();setEyeColor('#5ee7df');setMoodOverlay(null,0);isIdle=false;_st('Online · Ready');}},
+  happy:{label:'Happy',color:'#4ade80',apply(){resetEyeTargets();E.happyOff=EYE_H*0.46;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('');}},
+  sad:{label:'Sad',color:'#60a5fa',apply(){
+    resetEyeTargets();E.tiredH=EYE_H*0.3;E.pupilY=0.66;E.lh=EYE_H*0.74;E.rh=EYE_H*0.74;
+    setEyeColor('#60a5fa');setMoodOverlay('#60a5fa',0.05);
+    for(let i=0;i<5;i++)sweatDrops.push({x:80+Math.random()*120,y:18+Math.random()*18,vy:0.4+Math.random()*0.35,r:2+Math.random()*2,life:80+Math.random()*40,maxLife:120});
+    _st('');
+  }},
+  crying:{label:'Crying',color:'#93c5fd',apply(){
+    resetEyeTargets();
+    // Eyes squeezed mostly shut — very different from sad
+    E.tiredH=EYE_H*0.62;E.lh=EYE_H*0.52;E.rh=EYE_H*0.52;
+    E.lw=EYE_W*0.88;E.rw=EYE_W*0.88;
+    E.pupilY=0.78;E.pupilX=0.5;
+    // Strong blue tint
+    setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.12);
+    // Big continuous tear streams — spawn many in waves
+    function spawnTears(){
+      if(currentEmotion!=='crying') return;
+      // Left eye tears
+      for(let i=0;i<3;i++) sweatDrops.push({
+        x:E.lx+EYE_W*(0.25+Math.random()*0.5),
+        y:E.ly+EYE_H*0.55,
+        vy:1.2+Math.random()*0.8,r:3+Math.random()*2,
+        life:110+Math.random()*40,maxLife:150
+      });
+      // Right eye tears
+      for(let i=0;i<3;i++) sweatDrops.push({
+        x:E.rx+EYE_W*(0.25+Math.random()*0.5),
+        y:E.ry+EYE_H*0.55,
+        vy:1.2+Math.random()*0.8,r:3+Math.random()*2,
+        life:110+Math.random()*40,maxLife:150
+      });
+      setTimeout(spawnTears,350);
+    }
+    spawnTears();
+    // Vflicker — trembling while crying
+    E.vFlicker=true;E.vAmp=1;
+    _st('Please stop... 😢');
+  }},
+  ouch:{label:'Ouch!',color:'#f87171',apply(){
+    resetEyeTargets();
+    // 😣 — eyes squeezed very narrow, brows pushed hard together
+    E.lh=EYE_H*0.22;E.rh=EYE_H*0.22;
+    E.lw=EYE_W*0.82;E.rw=EYE_W*0.82;
+    E.tiredH=EYE_H*0.22;
+    E.hFlicker=true;E.hAmp=5;
+    setEyeColor('#f87171');setMoodOverlay('#f87171',0.14);_st('Ow!');
+  }},
+  hurt:{label:'Hurt',color:'#f87171',apply(){
+    resetEyeTargets();
+    // 😣 held — slightly more open than ouch but still squeezed
+    E.lh=EYE_H*0.30;E.rh=EYE_H*0.30;
+    E.tiredH=EYE_H*0.30;E.pupilY=0.72;
+    setEyeColor('#f87171');setMoodOverlay('#f87171',0.09);_st('That hurt...');
+  }},
+  speaking:{label:'Speaking',color:'#5ee7df',apply(){
+    // Speaking does NOT reset or change eye expression
+    // Only updates status text — current emotion face stays
+    _st('Speaking...');
+  }},
+  confused:{label:'Confused',color:'#fbbf24',apply(){
+    resetEyeTargets();E.lw=EYE_W*0.84;E.rw=EYE_W*1.14;E.lh=EYE_H*0.88;E.rh=EYE_H*1.0;
+    E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*0.6;
+    E.pupilX=0.44;E.pupilY=0.4;confusedShake=28;
+    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Hmm...');
+  }},
+  surprised:{label:'Surprised',color:'#f59e0b',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.22;E.rw=EYE_W*1.22;E.lh=EYE_H*1.26;E.rh=EYE_H*1.26;E.lbr=getBR();E.rbr=getBR();
+    E.pupilSize=0.24;setEyeColor('#f59e0b');setMoodOverlay('#f59e0b',0.04);_st('Whoa!');
+  }},
+  thinking:{label:'Thinking',color:'#b490ff',apply(){
+    resetEyeTargets();E.pupilX=0.20;E.pupilY=0.22;E.lh=EYE_H*0.88;
+    E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*0.55;
+    setEyeColor('#b490ff');setMoodOverlay('#b490ff',0.04);_st('Processing...');
+  }},
+  working:{label:'Working',color:'#38bdf8',apply(){
+    resetEyeTargets();E.lh=EYE_H*0.82;E.rh=EYE_H*0.82;E.pupilSize=0.28;
+    setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('On it...');
+  }},
+  sleepy:{label:'Sleepy',color:'#818cf8',apply(){
+    resetEyeTargets();E.tiredH=EYE_H*0.54;E.lh=EYE_H*0.54;E.rh=EYE_H*0.54;
+    E.pupilSize=0.26;E.pupilY=0.64;setEyeColor('#818cf8');setMoodOverlay('#818cf8',0.07);
+    isIdle=true;nextIdle=4000;_st('Getting sleepy...');
+  }},
+  sleeping:{label:'Sleeping',color:'#6366f1',apply(){
+    resetEyeTargets();E.sleepMode=true;E.lh=EYE_H;E.rh=EYE_H;
+    E.lhC=1;E.rhC=1;
+    setEyeColor('#6366f1');setMoodOverlay('#6366f1',0.1);
+    isIdle=false;_st('Zzz...');
+  }},
+  excited:{label:'Excited',color:'#fb923c',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.16;E.rw=EYE_W*1.16;E.lh=EYE_H*1.12;E.rh=EYE_H*1.12;
+    excitedBounce=140;excitedTs=performance.now();setEyeColor('#fb923c');setMoodOverlay('#fb923c',0.05);_st('');
+  }},
+  listening:{label:'Listening',color:'#34d399',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.06;E.rw=EYE_W*1.06;E.lh=EYE_H*1.06;E.rh=EYE_H*1.06;
+    E.pupilX=0.5;E.pupilY=0.5;E.pupilSize=0.30;setEyeColor('#34d399');setMoodOverlay('#34d399',0.03);_st('Listening...');
+  }},
+  speaking:{label:'Speaking',color:'#5ee7df',apply(){
+    resetEyeTargets();laughShake=28;E.lh=EYE_H*0.9;E.rh=EYE_H*0.9;setEyeColor('#5ee7df');_st('Speaking...');
+  }},
+  angry:{label:'Angry',color:'#ef4444',apply(){
+    resetEyeTargets();E.angryH=EYE_H*0.44;E.lw=EYE_W*1.06;E.rw=EYE_W*1.06;
+    setEyeColor('#ef4444');setMoodOverlay('#ef4444',0.09);_st('');
+  }},
+  love:{label:'Love',color:'#f472b6',apply(){
+    resetEyeTargets();E.heartPupils=true;E.lh=EYE_H*1.06;E.rh=EYE_H*1.06;
+    setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.06);
+    for(let i=0;i<14;i++)setTimeout(()=>heartParticles.push({x:CX+(Math.random()-0.5)*160,y:CH*0.82,vx:(Math.random()-0.5)*1.3,vy:1.3+Math.random()*1.3,size:5+Math.random()*8,life:80+Math.random()*40,maxLife:120,alpha:1}),i*110);
+    _st('');
+  }},
+  blush:{label:'Blushing',color:'#fb7185',apply(){
+    resetEyeTargets();E.blushMode=true;E.lh=EYE_H*0.9;E.rh=EYE_H*0.9;E.happyOff=EYE_H*0.22;E.pupilX=0.42;E.pupilY=0.52;
+    setEyeColor('#fb7185');setMoodOverlay('#fb7185',0.04);_st('');
+  }},
+  nervous:{label:'Nervous',color:'#fbbf24',apply(){
+    resetEyeTargets();E.vFlicker=true;E.vAmp=1.8;E.hFlicker=true;E.hAmp=1.4;E.lh=EYE_H*0.82;E.rh=EYE_H*0.82;
+    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);
+    for(let i=0;i<9;i++)sweatDrops.push({x:28+Math.random()*224,y:8+Math.random()*14,vy:0.5+Math.random()*0.5,r:1.5+Math.random()*2,life:60+Math.random()*40,maxLife:100});
+    _st('');
+  }},
+  frustrated:{label:'Frustrated',color:'#dc2626',apply(){
+    resetEyeTargets();E.angryH=EYE_H*0.58;E.lh=EYE_H*0.70;E.rh=EYE_H*0.70;E.hFlicker=true;E.hAmp=2.2;
+    setEyeColor('#dc2626');setMoodOverlay('#dc2626',0.11);_st('Ugh!');
+  }},
+  pleading:{label:'Pleading',color:'#93c5fd',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.30;E.rw=EYE_W*1.30;E.lh=EYE_H*1.30;E.rh=EYE_H*1.30;
+    E.pupilSize=0.50;E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*1.5;E.rbr=E.lbr;E.pupilY=0.56;
+    setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.05);_st('Please...');
+  }},
+  sarcastic:{label:'Unimpressed',color:'#94a3b8',apply(){
+    resetEyeTargets();E.lh=EYE_H*0.40;E.rh=EYE_H*0.72;E.tiredH=EYE_H*0.20;E.pupilX=0.5;E.pupilY=0.62;
+    setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('Really?');
+  }},
+  alert:{label:'Alert',color:'#f97316',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.20;E.rw=EYE_W*1.20;E.lh=EYE_H*1.20;E.rh=EYE_H*1.20;E.pupilSize=0.44;
+    setEyeColor('#f97316');setMoodOverlay('#f97316',0.05);_st('Alert!');
+  }},
+  speechless:{label:'Speechless',color:'#e2e8f0',apply(){
+    resetEyeTargets();E.lw=EYE_W*1.32;E.rw=EYE_W*1.32;E.lh=EYE_H*1.32;E.rh=EYE_H*1.32;E.pupilSize=0.20;E.vFlicker=true;E.vAmp=1;
+    setEyeColor('#e2e8f0');setMoodOverlay(null,0);_st('...');
+  }},
+  chilling:{label:'Chilling',color:'#38bdf8',apply(){
+    resetEyeTargets();E.tiredH=EYE_H*0.26;E.lh=EYE_H*0.72;E.rh=EYE_H*0.72;E.pupilSize=0.29;
+    isIdle=true;nextIdle=3500;setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('Chillin\'');
+  }},
+  curious:{label:'Curious',color:'#a78bfa',apply(){
+    resetEyeTargets();E.lw=EYE_W*0.84;E.rw=EYE_W*1.22;E.lh=EYE_H*0.9;E.rh=EYE_H*1.12;E.pupilX=0.74;
+    setEyeColor('#a78bfa');setMoodOverlay('#a78bfa',0.04);_st('Interesting...');
+  }},
+  laugh:{label:'Laughing',color:'#4ade80',apply(){
+    resetEyeTargets();E.happyOff=EYE_H*0.55;laughShake=45;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.05);_st('Haha!');
+  }},
+  music:{label:'Vibing',color:'#fbbf24',apply(){
+    resetEyeTargets();E.happyOff=EYE_H*0.22;E.lh=EYE_H*0.88;E.rh=EYE_H*0.88;
+    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('♪ Vibing...');
+  }},
+  question:{label:'What?',color:'#fbbf24',apply(){resetEyeTargets();E.questionMode=true;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Could you rephrase that?');}},
+  battery_high:{label:'Battery OK',color:'#4ade80',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.82;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('Battery good');setTimeout(()=>setEmotion('neutral'),4500);}},
+  battery_mid:{label:'Battery Mid',color:'#fbbf24',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.44;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.05);_st('Battery draining');setTimeout(()=>setEmotion('neutral'),4500);}},
+  battery_low:{label:'Battery Low!',color:'#f87171',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.11;setEyeColor('#f87171');setMoodOverlay('#f87171',0.11);_st('Plug in!');setTimeout(()=>setEmotion('neutral'),5000);}},
+  clock:{label:'Time',color:'#5ee7df',apply(){resetEyeTargets();E.clockMode=true;setEyeColor('#5ee7df');setMoodOverlay(null,0);_st('');setTimeout(()=>setEmotion('neutral'),7000);}},
+  look_topleft:{label:'↖ Top-left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.16;E.pupilY=0.16;setEyeColor('#5ee7df');}},
+  look_topright:{label:'↗ Top-right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.84;E.pupilY=0.16;setEyeColor('#5ee7df');}},
+  look_bottomleft:{label:'↙ Bottom-left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.16;E.pupilY=0.84;setEyeColor('#5ee7df');}},
+  look_bottomright:{label:'↘ Bottom-right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.84;E.pupilY=0.84;setEyeColor('#5ee7df');}},
+  look_left:{label:'◀ Left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.12;E.pupilY=0.5;setEyeColor('#5ee7df');}},
+  look_right:{label:'▶ Right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.88;E.pupilY=0.5;setEyeColor('#5ee7df');}},
+  look_up:{label:'▲ Up',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.5;E.pupilY=0.12;setEyeColor('#5ee7df');}},
+  look_down:{label:'▼ Down',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.5;E.pupilY=0.88;setEyeColor('#5ee7df');}},
+  cool:{label:'Cool 😎',color:'#38bdf8',apply(){
+    resetEyeTargets();
+    // Half-lidded confident eyes — top eyelid covers 40%
+    E.tiredH=EYE_H*0.40;E.lh=EYE_H*0.92;E.rh=EYE_H*0.92;
+    E.pupilY=0.62;E.pupilX=0.5;
+    setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('');
+  }},
+  wink:{label:'Wink 😉',color:'#4ade80',apply(){
+    resetEyeTargets();
+    // Right eye closed (wink), left eye normal
+    E.rh=1;E.lh=EYE_H;E.happyOff=EYE_H*0.15;
+    setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.03);_st('');
+    // Reopen right eye after 600ms
+    setTimeout(()=>{if(currentEmotion==='wink'){E.rh=EYE_H;}},600);
+  }},
+  unamused:{label:'Unamused 😒',color:'#94a3b8',apply(){
+    resetEyeTargets();
+    // Both eyes half-lidded, looking slightly sideways — bored look
+    E.tiredH=EYE_H*0.35;E.lh=EYE_H*0.75;E.rh=EYE_H*0.75;
+    E.pupilX=0.38;E.pupilY=0.58;
+    setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('...');
+  }},
+  dizzy:{label:'Dizzy 😵',color:'#f472b6',apply(){
+    resetEyeTargets();
+    // Eyes spinning — we animate via dizzyAngle
+    E.lw=EYE_W*1.1;E.rw=EYE_W*1.1;E.lh=EYE_H*1.1;E.rh=EYE_H*1.1;
+    setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.07);_st('Whoa...');
+    // Auto recover after 3s
+    setTimeout(()=>{if(currentEmotion==='dizzy')setEmotion('neutral');},3000);
+  }},
+};
+
+function setEmotion(name){
+  if(!EMOTIONS[name])return;
+  const prev=currentEmotion;
+  currentEmotion=name;
+  EMOTIONS[name].apply();
+  const el=document.getElementById('emotionLabel');
+  if(el){el.textContent=EMOTIONS[name].label;el.style.color=EMOTIONS[name].color;}
+  updateDashboard(name);
+  if(prev!==name){emotionHistory.unshift(name);if(emotionHistory.length>6)emotionHistory.pop();}
+  document.querySelectorAll('.dev-btn').forEach(b=>b.classList.toggle('active',b.dataset.emotion===name));
+}
+
+// ── Init canvas ──
+resetEyeTargets();E.lhC=1;E.rhC=1;
+setTimeout(()=>{E.lh=EYE_H;E.rh=EYE_H;},300);
+requestAnimationFrame(drawFrame);
+
+// ════════════════════════════════════════════
+//  EMOTION DETECTION
+// ════════════════════════════════════════════
+function parseEmotionTag(text){const m=text.match(/\[EMOTION:([a-z_]+)\]/i);return m?m[1]:null;}
+function stripEmotionTag(text){return text.replace(/\s*\[EMOTION:[a-z_]+\]\s*$/i,'').trim();}
+
+const EKW={
+  happy:['happy','great','awesome','wonderful','excellent','fantastic','glad','yay','thanks','thank you'],
+  sad:['sad','sorry','miss','lost','hurt','alone','depressed','unhappy'],
+  angry:['angry','furious','mad','hate','terrible','awful','worst'],
+  confused:['confused','unclear','dont understand','not sure','what do you mean'],
+  surprised:['wow','whoa','omg','amazing','shocking','unbelievable','seriously'],
+  excited:['exciting','cant wait','incredible','lets go','finally','yes!'],
+  love:['love','adore','heart','beautiful','cute','sweet','lovely'],
+  nervous:['nervous','anxious','worried','scared','stress','panic'],
+  curious:['interesting','curious','how does','why does','what if','tell me more'],
+  chilling:['chill','relax','no worries','take it easy','its fine'],
+  laugh:['haha','lol','funny','hilarious','lmao','hehe'],
+  blush:['embarrassed','blushing','shy','flattered','awkward'],
+  working:['sure','working on','let me','doing','on it','processing','just a moment'],
+  cool:['nice','smooth','slick','that was cool','well done','nailed','perfect'],
+  wink:['joking','just kidding','jk','wink','playful','teasing'],
+  unamused:['whatever','ok ok','yeah yeah','i know','again','same thing','boring','obviously'],
+};
+
+function detectFromInput(text){
+  const t=text.toLowerCase();
+  if(/battery|charge level|power level/.test(t)){
+    if(/low|dying|critical|empty/.test(t)) return'battery_low';
+    if(/half|medium|draining/.test(t)) return'battery_mid';
+    return'battery_high';
+  }
+  if(/\btime\b|what time|clock/.test(t)) return'clock';
+  if(/don.t (know|understand)|not sure|unclear|confused/.test(t)) return'confused';
+  if(/\?/.test(t)) return'thinking';
+  for(const[em,words] of Object.entries(EKW)){
+    for(const w of words) if(t.includes(w)) return em;
+  }
+  return'thinking';
+}
+
+function detectFromResponse(t){
+  const txt=t.toLowerCase();
+  if(/sorry|sad|unfortunate|that must|difficult|tough/.test(txt)) return'sad';
+  if(/haha|funny|love that|wonderful|glad|happy|great news/.test(txt)) return'happy';
+  if(/interesting|fascinating|curious|did you know/.test(txt)) return'curious';
+  if(/wow|amazing|incredible|whoa|really/.test(txt)) return'surprised';
+  if(/working on|let me|one moment|just a sec|on it/.test(txt)) return'working';
+  if(/don.t understand|unclear|rephrase|could you/.test(txt)) return'question';
+  if(/wink|just kidding|joking|playful/.test(txt)) return'wink';
+  if(/smooth|slick|nailed|perfect|exactly/.test(txt)) return'cool';
+  if(/obviously|of course|as expected|naturally/.test(txt)) return'unamused';
+  return'neutral';
+}
+
+// ── Recovery from crying ──
+const RECOVERY_WORDS=['sorry','forgive','love','happy','sorry vega','make it up','my bad','please forgive','i love'];
+function checkRecovery(text){
+  const t=text.toLowerCase();
+  return RECOVERY_WORDS.some(w=>t.includes(w));
+}
+
+// ════════════════════════════════════════════
+//  TTS — TEXT TO SPEECH (Chrome + Edge + Firefox)
+// ════════════════════════════════════════════
+let ttsMuted=false;
+let ttsLang='en-US';
+let voicesReady=false;
+let _voiceCache={};
+
+// Pre-load voices as soon as they're available
+function initVoices(){
+  const voices=window.speechSynthesis.getVoices();
+  if(!voices.length) return;
+  voicesReady=true;
+  // Cache best voice per language
+  const langs=['en-US','te-IN','hi-IN'];
+  langs.forEach(lang=>{
+    const code=lang.split('-')[0];
+    // Priority: exact lang match local → exact lang match → partial match → default
+    _voiceCache[lang]=
+      voices.find(v=>v.lang===lang&&v.localService&&!v.name.includes('Google'))||
+      voices.find(v=>v.lang===lang&&v.localService)||
+      voices.find(v=>v.lang===lang)||
+      voices.find(v=>v.lang.startsWith(code)&&v.localService)||
+      voices.find(v=>v.lang.startsWith(code))||
+      voices.find(v=>v.default)||
+      voices[0];
+  });
+  console.log('[TTS] Voices loaded:',Object.entries(_voiceCache).map(([k,v])=>`${k}→${v?.name}`).join(', '));
+}
+
+if(window.speechSynthesis){
+  // Chrome fires voiceschanged after load
+  window.speechSynthesis.onvoiceschanged=initVoices;
+  // Edge/Firefox often have voices immediately
+  setTimeout(initVoices,100);
+  setTimeout(initVoices,800);
+}
+
+// 4-line TTS limit
+const TTS_MAX_LINES=4;
+const TTS_OVERFLOW_PHRASES=[
+  'Sir, this answer is a bit detailed — please take a look.',
+  'There is more to read here, sir.',
+  'I have written out the full answer for you, sir.',
+  'Sir, please have a look at the complete response.',
+];
+
+function getTTSText(text){
+  // Strip markdown formatting for speech
+  let clean=text
+    .replace(/```[\s\S]*?```/g,'')
+    .replace(/`[^`]+`/g,'')
+    .replace(/\*\*(.*?)\*\*/g,'$1')
+    .replace(/#{1,3}\s/g,'')
+    .replace(/[-*]\s/g,'')
+    .replace(/\n{2,}/g,'\n')
+    .trim();
+  const lines=clean.split('\n').filter(l=>l.trim().length>0);
+  if(lines.length<=TTS_MAX_LINES){
+    return clean;
+  }
+  // Too long — return overflow phrase
+  return TTS_OVERFLOW_PHRASES[Math.floor(Math.random()*TTS_OVERFLOW_PHRASES.length)];
+}
+
+function speak(text){
+  if(ttsMuted||!window.speechSynthesis) return;
+  // Cancel any ongoing speech immediately
+  window.speechSynthesis.cancel();
+  const ttsText=getTTSText(text);
+  if(!ttsText) return;
+
+  // Small delay to avoid Chrome lag on cancel→speak
+  setTimeout(()=>{
+    const utt=new SpeechSynthesisUtterance(ttsText);
+    utt.lang=ttsLang;
+    utt.rate=ttsLang.startsWith('te')?0.9:ttsLang.startsWith('hi')?0.95:1.0;
+    utt.pitch=1.05;
+    utt.volume=1;
+    const voice=_voiceCache[ttsLang]||_voiceCache['en-US'];
+    if(voice) utt.voice=voice;
+    utt.onstart=()=>{
+      pauseMicForTTS(); // pause mic so Vega doesn't hear itself
+    };
+    utt.onend=()=>{
+      resumeMicAfterTTS(); // resume mic after speaking
+    };
+    utt.onerror=(e)=>{
+      if(e.error!=='interrupted'&&e.error!=='canceled')
+        console.warn('[TTS error]',e.error);
+      resumeMicAfterTTS();
+    };
+    window.speechSynthesis.speak(utt);
+  },50);
+}
+
+// Chrome has a bug where TTS stops after ~15s — keep it alive
+setInterval(()=>{
+  if(window.speechSynthesis&&window.speechSynthesis.speaking){
+    window.speechSynthesis.pause();
+    window.speechSynthesis.resume();
+  }
+},10000);
+
+function stopSpeaking(){
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function toggleTTS(){
+  ttsMuted=!ttsMuted;
+  const btn=document.getElementById('ttsBtn');
+  if(btn){btn.textContent=ttsMuted?'🔇':'🔊';btn.classList.toggle('muted',ttsMuted);}
+  if(ttsMuted) stopSpeaking();
+  updateDashVoice();
+  showToast(ttsMuted?'Voice muted':'Voice on');
+}
+
+// ════════════════════════════════════════════
+//  MUSIC MODE
+// ════════════════════════════════════════════
+function toggleMusic(){
+  musicPlaying=!musicPlaying;
+  const btn=document.getElementById('musicBtn');
+  if(btn)btn.classList.toggle('active',musicPlaying);
+  if(musicPlaying){setEmotion('music');showToast('Music mode on ♪');}
+  else{musicNotes=[];setEmotion('neutral');showToast('Music mode off');}
+}
+
+// ════════════════════════════════════════════
+//  TASK STATUS
+// ════════════════════════════════════════════
+let taskSteps=[];
+let taskActive=false;
+
+function setTaskStatus(steps,activeIdx){
+  taskActive=activeIdx>=0;
+  taskSteps=steps;
+  // task bar in chat
+  const tb=document.getElementById('taskBar');
+  const tbt=document.getElementById('taskBarText');
+  if(tb&&tbt){
+    tb.classList.toggle('active',taskActive);
+    if(taskActive&&steps[activeIdx])tbt.textContent=steps[activeIdx];
+  }
+  // dashboard
+  const ds=document.getElementById('dashTaskSteps');
+  if(ds){
+    ds.innerHTML='';
+    if(!steps.length){ds.innerHTML='<div class="task-step" style="color:var(--t3)">No active task</div>';return;}
+    steps.forEach((s,i)=>{
+      const d=document.createElement('div');
+      d.className='task-step'+(i===activeIdx?' active':i<activeIdx?' done':'');
+      d.innerHTML=`<div class="task-step-dot"></div>${s}`;
+      ds.appendChild(d);
+    });
+  }
+}
+
+function clearTask(){setTaskStatus([],- 1);}
+
+// Simulate task detection from messages
+function detectTask(text){
+  const t=text.toLowerCase();
+  if(/play|music|song|spotify/.test(t)){
+    return['Detecting music app','Opening player','Searching song','Playing'];
+  }
+  if(/open|launch|start/.test(t)){
+    return['Finding app','Opening application','Ready'];
+  }
+  if(/search|find|look up/.test(t)){
+    return['Searching web','Gathering results','Summarizing'];
+  }
+  if(/weather/.test(t)){
+    return['Detecting location','Fetching weather','Done'];
+  }
+  return null;
+}
+
+function runTaskAnimation(steps){
+  setTaskStatus(steps,0);setEmotion('working');
+  let i=0;
+  const next=()=>{
+    i++;
+    if(i<steps.length){setTaskStatus(steps,i);setTimeout(next,900+Math.random()*600);}
+    else{setTimeout(()=>{clearTask();},1200);}
+  };
+  setTimeout(next,800+Math.random()*400);
+}
+
+// ════════════════════════════════════════════
+//  DASHBOARD
+// ════════════════════════════════════════════
+let vegaMode=2;
+let sessionStart=Date.now();
+let msgCount=0;
+let activityData=new Array(12).fill(0);
+
+function setVegaMode(m){
+  vegaMode=m;
+  document.getElementById('modeBtn2').classList.toggle('active',m===2);
+  document.getElementById('modeBtn3').classList.toggle('active',m===3);
+  const d=document.getElementById('vegaDashboard');
+  if(d)d.classList.toggle('visible',m===3);
+  resizeCanvas();
+}
+
+function updateDashboard(emotion){
+  const dm=document.getElementById('dashMood');
+  if(dm&&EMOTIONS[emotion]){dm.textContent=EMOTIONS[emotion].label;dm.style.color=EMOTIONS[emotion].color;}
+  // mood dots
+  const dots=document.getElementById('moodDots');
+  if(dots){
+    dots.innerHTML='';
+    const trail=[emotion,...emotionHistory.slice(0,4)];
+    trail.forEach((e,i)=>{
+      const d=document.createElement('div');d.className='mood-dot';
+      d.style.background=EMOTIONS[e]?.color||'#5ee7df';
+      d.style.width=i===0?'10px':'7px';d.style.height=i===0?'10px':'7px';
+      d.style.opacity=1-i*0.18;d.title=EMOTIONS[e]?.label||e;
+      dots.appendChild(d);
+    });
+  }
+  updateDashVoice();
+}
+
+function updateDashVoice(){
+  const dv=document.getElementById('dashVoice');
+  if(dv){
+    const langName=ttsLang.startsWith('te')?'తె':ttsLang.startsWith('hi')?'हि':'EN';
+    dv.textContent=`TTS ${ttsMuted?'Off':'On'} · ${langName}`;
+    dv.style.color=ttsMuted?'var(--red)':'var(--accent)';
+  }
+}
+
+function updateDashClock(){
+  const dt=document.getElementById('dashTime');
+  const dd=document.getElementById('dashDate');
+  const ds=document.getElementById('dashSession');
+  const dc=document.getElementById('dashMsgCount');
+  if(dt){const n=new Date();dt.textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
+  if(dd){const n=new Date();dd.textContent=n.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'});}
+  if(ds){const elapsed=Math.floor((Date.now()-sessionStart)/1000);const m=Math.floor(elapsed/60).toString().padStart(2,'0'),s=(elapsed%60).toString().padStart(2,'0');ds.textContent=m+':'+s;}
+  if(dc){dc.textContent=msgCount+' message'+(msgCount!==1?'s':'');}
+}
+setInterval(updateDashClock,1000);
+
+function resizeCanvas(){
+  const inner=document.getElementById('vegaInner');if(!inner)return;
+  const iw=inner.offsetWidth-28,ih=inner.offsetHeight-(vegaMode===3?260:100);
+  const scale=Math.min(iw/280,Math.max(0.5,ih/180),1.5);
+  canvas.style.width=Math.round(280*scale)+'px';canvas.style.height=Math.round(180*scale)+'px';
+}
+
+// ════════════════════════════════════════════
+//  INACTIVITY → SLEEP
+// ════════════════════════════════════════════
+let lastActivityTime=Date.now();
+const SLEEPY_MS=25000,SLEEP_MS=45000;
+
+function wakeVega(){
+  lastActivityTime=Date.now();
+  if(currentEmotion==='sleeping'||currentEmotion==='sleepy'){setEmotion('neutral');zzzParticles=[];}
+}
+document.addEventListener('keydown',wakeVega);
+document.addEventListener('click',wakeVega);
+document.addEventListener('mousemove',()=>{lastActivityTime=Date.now();});
+
+setInterval(()=>{
+  const idle=Date.now()-lastActivityTime;
+  if(idle>SLEEP_MS&&currentEmotion!=='sleeping')setEmotion('sleeping');
+  else if(idle>SLEEPY_MS&&currentEmotion!=='sleeping'&&currentEmotion!=='sleepy')setEmotion('sleepy');
+},5000);
+
+// ════════════════════════════════════════════
+//  PANEL SYSTEM
+// ════════════════════════════════════════════
+let panelOrder=['panel-history','panel-vega','panel-chat'];
+let collapsedPanels=new Set();
+const defaultWidths={'panel-history':20,'panel-vega':45,'panel-chat':35};
+let panelWidths={...defaultWidths};
+
+function applyPanelWidths(){
+  const active=panelOrder.filter(id=>!collapsedPanels.has(id));
+  const totalPct=active.reduce((s,id)=>s+panelWidths[id],0);
+  panelOrder.forEach(id=>{
+    const el=document.getElementById(id);
+    if(collapsedPanels.has(id)){el.style.width='0px';el.style.minWidth='0px';el.style.overflow='hidden';}
+    else{const pct=(panelWidths[id]/totalPct)*100;el.style.width=pct+'%';el.style.minWidth='170px';el.style.overflow='hidden';}
+  });
+  renderCollapsedTabs();
+}
+
+function rebuildPanels(){
+  const container=document.getElementById('panelsContainer');
+  container.querySelectorAll('.drag-handle').forEach(h=>h.remove());
+  panelOrder.forEach(id=>container.appendChild(document.getElementById(id)));
+  const panelEls=panelOrder.map(id=>document.getElementById(id));
+  for(let i=0;i<panelEls.length-1;i++){
+    const h=document.createElement('div');h.className='drag-handle';h.id='dh-'+i;
+    h.onmousedown=e=>startResize(e,i);panelEls[i].after(h);
+  }
+  applyPanelWidths();
+}
+
+function collapsePanel(id){
+  collapsedPanels.add(id);
+  const el=document.getElementById(id);el.classList.add('collapsing');
+  setTimeout(()=>el.classList.remove('collapsing'),320);
+  applyPanelWidths();showToast(el.dataset.name+' closed');
+}
+
+function expandPanel(id){
+  collapsedPanels.delete(id);
+  const el=document.getElementById(id);el.classList.add('collapsing');
+  setTimeout(()=>el.classList.remove('collapsing'),320);
+  applyPanelWidths();
+}
+
+function movePanel(id,dir){
+  const i=panelOrder.indexOf(id);
+  if(dir==='left'&&i>0)[panelOrder[i],panelOrder[i-1]]=[panelOrder[i-1],panelOrder[i]];
+  else if(dir==='right'&&i<panelOrder.length-1)[panelOrder[i],panelOrder[i+1]]=[panelOrder[i+1],panelOrder[i]];
+  rebuildPanels();showToast(document.getElementById(id).dataset.name+' moved '+dir);
+}
+
+function renderCollapsedTabs(){
+  const c=document.getElementById('collapsedTabs');c.innerHTML='';
+  collapsedPanels.forEach(id=>{
+    const el=document.getElementById(id);
+    const tab=document.createElement('div');
+    const idx=panelOrder.indexOf(id);
+    tab.className='collapsed-tab '+(idx===0?'left-tab':'right-tab');
+    tab.textContent=el.dataset.name;tab.onclick=()=>expandPanel(id);c.appendChild(tab);
+  });
+}
+
+// ── Resize drag ──
+let resizing=false,resizeIdx=-1,resizeStartX=0,resizeSW={};
+
+function startResize(e,idx){
+  resizing=true;resizeIdx=idx;resizeStartX=e.clientX;
+  const active=panelOrder.filter(id=>!collapsedPanels.has(id));
+  const lId=active[idx],rId=active[idx+1];
+  resizeSW={lId,rId,lw:panelWidths[lId],rw:panelWidths[rId]};
+  document.getElementById('dh-'+idx)?.classList.add('dragging');
+  e.preventDefault();
+}
+document.addEventListener('mousemove',e=>{
+  if(!resizing)return;
+  const tw=document.getElementById('panelsContainer').offsetWidth;if(!tw)return;
+  const dpct=((e.clientX-resizeStartX)/tw)*100;
+  const{lId,rId,lw,rw}=resizeSW,min=8;
+  panelWidths[lId]=Math.max(min,Math.min(lw+rw-min,lw+dpct));
+  panelWidths[rId]=lw+rw-panelWidths[lId];
+  applyPanelWidths();
+});
+document.addEventListener('mouseup',()=>{if(resizing){document.querySelectorAll('.drag-handle').forEach(h=>h.classList.remove('dragging'));resizing=false;}});
+
+// ════════════════════════════════════════════
+//  WEBSOCKET
+// ════════════════════════════════════════════
+let ws=null,wsReady=false;
+let chatHistory=[],currentChatId=Date.now().toString(),allChats={};
+
+function connectWS(){
+  setConnStatus('connecting');
+  ws=new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen=()=>{wsReady=true;setConnStatus('online');showToast('Vega connected ✓');};
+  ws.onmessage=e=>{
+    try{
+      const data=JSON.parse(e.data);
+      if(data.type==='ping'){ws.send(JSON.stringify({type:'pong'}));return;}
+      if(data.type==='response'){
+        removeTyping();stopSpeaking();
+        let raw=data.text||'';
+        const tag=parseEmotionTag(raw);
+        const clean=stripEmotionTag(raw);
+        addMessage('vega',clean);
+        chatHistory.push({role:'assistant',content:clean});
+        msgCount++;
+        if(tag&&EMOTIONS[tag])setEmotion(tag);
+        else setEmotion(detectFromResponse(clean)||'neutral');
+        speak(clean);
+        setConnStatus('online');
+        saveCurrentChat();clearTask();
+      }
+      if(data.type==='error'){removeTyping();addMessage('vega','Something went wrong. Try again.');setEmotion('nervous');setConnStatus('online');clearTask();}
+    }catch(err){console.error(err);}
+  };
+  ws.onclose=()=>{wsReady=false;setConnStatus('offline');setTimeout(connectWS,3000);};
+  ws.onerror=()=>{wsReady=false;setConnStatus('offline');};
+}
+
+function setConnStatus(s){
+  const dot=document.getElementById('statusDot'),txt=document.getElementById('statusText');
+  if(!dot||!txt)return;
+  if(s==='online'){dot.className='status-dot';txt.textContent='Vega · Online';}
+  else if(s==='offline'){dot.className='status-dot offline';txt.textContent='Disconnected · Retrying...';}
+  else if(s==='connecting'){dot.className='status-dot thinking';txt.textContent='Connecting...';}
+  else if(s==='thinking'){dot.className='status-dot thinking';txt.textContent='Thinking...';}
+}
+
+// ════════════════════════════════════════════
+//  CHAT UI
+// ════════════════════════════════════════════
+const USER_NAME='{{ USER_NAME }}';
+const USER_INITIAL=(USER_NAME||'U').charAt(0).toUpperCase();
+
+function addMessage(role,text){
+  const container=document.getElementById('chatMessages');if(!container)return;
+  const isVega=role==='vega';
+  const div=document.createElement('div');div.className='msg '+role;
+  const now=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const avatarInit=isVega?'V':USER_INITIAL;
+  const fullName=isVega?'VEGA':USER_NAME||'User';
+  div.innerHTML=`
+    <div class="msg-avatar-wrap">
+      <div class="msg-avatar">${avatarInit}</div>
+      <div class="avatar-tooltip">${fullName}</div>
+    </div>
+    <div>
+      <div class="msg-bubble">${formatMD(text)}</div>
+      <div class="msg-time">${now}</div>
+    </div>`;
+  container.appendChild(div);container.scrollTop=container.scrollHeight;
+}
+
+function formatMD(t){
+  t=t.replace(/```([\s\S]*?)```/g,'<pre><code>$1</code></pre>');
+  t=t.replace(/`([^`]+)`/g,'<code>$1</code>');
+  t=t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  t=t.replace(/\n/g,'<br>');
+  return t;
+}
+
+function addTyping(){
+  const c=document.getElementById('chatMessages');if(!c||document.getElementById('typingMsg'))return;
+  const d=document.createElement('div');d.className='msg vega';d.id='typingMsg';
+  d.innerHTML=`<div class="msg-avatar-wrap"><div class="msg-avatar">V</div><div class="avatar-tooltip">VEGA</div></div><div><div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;
+}
+function removeTyping(){document.getElementById('typingMsg')?.remove();}
+
+// ── Local query intercepts (time, date, battery — never send to server) ──────
+function handleLocalQuery(text){
+  const t=text.toLowerCase().trim();
+  const now=new Date();
+  if(/\b(what.?s the time|current time|time now|what time is it|tell me the time|time)\b/.test(t)&&t.length<20){
+    const timeStr=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    setEmotion('clock');
+    return{text:`It's ${timeStr}, sir.`,emotion:'clock'};
+  }
+  if(/\b(what.?s the date|today.?s date|what day|which day|date today)\b/.test(t)){
+    const dateStr=now.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    return{text:`Today is ${dateStr}.`,emotion:'neutral'};
+  }
+  if(/\b(battery|charge|power level)\b/.test(t)){
+    if('getBattery' in navigator){
+      navigator.getBattery().then(b=>{
+        const pct=Math.round(b.level*100);
+        const status=b.charging?'charging':'on battery';
+        const em=pct>60?'battery_high':pct>20?'battery_mid':'battery_low';
+        const msg=`Battery is at ${pct}%, ${status}.`;
+        addMessage('vega',msg);chatHistory.push({role:'assistant',content:msg});
+        setEmotion(em);speak(msg);
+      });
+      return{text:'Checking battery...',emotion:'thinking'};
+    }
+    return{text:'Battery API not available in this browser.',emotion:'neutral'};
+  }
+  return null;
+}
+
+function sendMessage(){
+  const vegaInp=document.getElementById('vegaInput');
+  const chatInp=document.getElementById('chatInput');
+  const input=vegaInp||chatInp;
+  const text=(input?.value||'').trim();
+  if(!text) return;
+  if(!wsReady){showToast('Not connected yet');return;}
+  input.value='';
+  if(vegaInp) autoResizeVega(vegaInp);
+  if(chatInp) autoResize(chatInp);
+
+  // Local intercepts
+  const localResp=handleLocalQuery(text);
+  if(localResp&&localResp.text!=='Checking battery...'){
+    addMessage('user',text);chatHistory.push({role:'user',content:text});msgCount++;
+    setTimeout(()=>{
+      addMessage('vega',localResp.text);
+      chatHistory.push({role:'assistant',content:localResp.text});
+      msgCount++;setEmotion(localResp.emotion||'neutral');
+      speak(localResp.text);saveCurrentChat();
+    },280);
+    return;
+  }
+
+  // Recovery check
+  if((currentEmotion==='crying'||currentEmotion==='hurt')&&checkRecovery(text)){
+    setTimeout(()=>{setEmotion('blush');setTimeout(()=>setEmotion('happy'),2000);},400);
+  }
+  addMessage('user',text);
+  chatHistory.push({role:'user',content:text});
+  msgCount++;lastActivityTime=Date.now();
+  stopSpeaking();
+  // Proactive: note if mic is active and user types
+  if(micActive){
+    showToast('Tip: voice input is active — you can speak instead');
+  }
+  const taskS=detectTask(text);
+  if(taskS) runTaskAnimation(taskS);
+  else{const em=detectFromInput(text);setEmotion(em||'thinking');}
+  addTyping();setConnStatus('thinking');
+  ws.send(JSON.stringify({type:'message',text}));
+}
+
+function handleVegaKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
+function autoResizeVega(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,80)+'px';}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+
+// ── Language ──
+let speechLang='en-US';
+function selectLang(btn){
+  speechLang=btn.dataset.lang;
+  ttsLang=btn.dataset.tts||speechLang;
+  document.querySelectorAll('.lang-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  if(recognition)recognition.lang=speechLang;
+  updateDashVoice();
+  showToast('Language: '+btn.textContent.trim());
+}
+
+// ── Voice Input (STT) — stays ON until manually stopped ──
+let recognition=null,micActive=false,micPaused=false;
+let micRestartTimer=null;
+
+function setupSpeech(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showToast('Speech not supported in this browser');return false;}
+  recognition=new SR();
+  recognition.lang=speechLang;
+  recognition.interimResults=true;
+  recognition.continuous=true;  // keep listening
+  recognition.maxAlternatives=1;
+
+  recognition.onresult=e=>{
+    if(micPaused) return; // ignore input while Vega is speaking
+    let interim='',final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript;
+      else interim+=e.results[i][0].transcript;
+    }
+    const inp=document.getElementById('vegaInput')||document.getElementById('chatInput');
+    if(inp){inp.value=final||interim;if(inp.id==='vegaInput')autoResizeVega(inp);else autoResize(inp);}
+    if(final.trim()){
+      const text=final.trim();
+      // Clear input and send
+      if(inp) inp.value='';
+      sendMessageText(text);
+    }
+  };
+
+  // When recognition ends (browser stops it), restart if mic should still be on
+  recognition.onend=()=>{
+    if(micActive&&!micPaused){
+      // Restart to keep listening
+      micRestartTimer=setTimeout(()=>{
+        if(micActive&&recognition){
+          try{recognition.lang=speechLang;recognition.start();}catch(e){}
+        }
+      },200);
+    }
+  };
+
+  recognition.onerror=e=>{
+    if(e.error==='no-speech') return; // ignore silence
+    if(e.error==='aborted') return;   // ignore manual stops
+    showToast('Voice: '+e.error);
+    if(e.error==='not-allowed'){stopMic();return;}
+    // For other errors, try to restart
+    if(micActive){
+      micRestartTimer=setTimeout(()=>{
+        if(micActive){try{recognition.start();}catch(e){}}
+      },500);
+    }
+  };
+  return true;
+}
+
+function toggleMic(){micActive?stopMic():startMic();}
+
+function startMic(){
+  if(!recognition&&!setupSpeech()) return;
+  clearTimeout(micRestartTimer);
+  micPaused=false;
+  try{recognition.lang=speechLang;recognition.start();}
+  catch(e){
+    // Already started — that's fine
+    if(!e.message.includes('already started')) showToast('Mic: '+e.message);
+  }
+  micActive=true;
+  document.getElementById('micBtn')?.classList.add('mic-active');
+  document.getElementById('vegaMicBtn')?.classList.add('mic-active');
+  setEmotion('listening');
+}
+
+function stopMic(){
+  clearTimeout(micRestartTimer);
+  micActive=false;micPaused=false;
+  if(recognition){try{recognition.stop();}catch(e){}}
+  document.getElementById('micBtn')?.classList.remove('mic-active');
+  document.getElementById('vegaMicBtn')?.classList.remove('mic-active');
+  if(currentEmotion==='listening') setEmotion('neutral');
+}
+
+// Pause mic while Vega speaks — resumes after TTS ends
+function pauseMicForTTS(){
+  if(!micActive) return;
+  micPaused=true;
+  if(recognition){try{recognition.stop();}catch(e){}}
+}
+
+function resumeMicAfterTTS(){
+  if(!micActive) return;
+  micPaused=false;
+  setTimeout(()=>{
+    if(micActive&&recognition){
+      try{recognition.lang=speechLang;recognition.start();}catch(e){}
+    }
+  },400); // small delay so TTS audio fully stops
+}
+
+// Helper: send message from text string (used by STT)
+function sendMessageText(text){
+  if(!text.trim()) return;
+  if(!wsReady){showToast('Not connected yet');return;}
+  const localResp=handleLocalQuery(text);
+  if(localResp&&localResp.text!=='Checking battery...'){
+    addMessage('user',text);chatHistory.push({role:'user',content:text});msgCount++;
+    setTimeout(()=>{
+      addMessage('vega',localResp.text);
+      chatHistory.push({role:'assistant',content:localResp.text});
+      msgCount++;setEmotion(localResp.emotion||'neutral');
+      speak(localResp.text);saveCurrentChat();
+    },280);
+    return;
+  }
+  if((currentEmotion==='crying'||currentEmotion==='hurt')&&checkRecovery(text)){
+    setTimeout(()=>{setEmotion('blush');setTimeout(()=>setEmotion('happy'),2000);},400);
+  }
+  addMessage('user',text);
+  chatHistory.push({role:'user',content:text});
+  msgCount++;lastActivityTime=Date.now();
+  stopSpeaking();
+  const taskS=detectTask(text);
+  if(taskS) runTaskAnimation(taskS);
+  else{const em=detectFromInput(text);setEmotion(em||'thinking');}
+  addTyping();setConnStatus('thinking');
+  ws.send(JSON.stringify({type:'message',text}));
+}
+
+// ════════════════════════════════════════════
+//  CHAT HISTORY — SERVER STORAGE
+// ════════════════════════════════════════════
+async function saveCurrentChat(){
+  if(!chatHistory.length) return;
+  // Title = 2nd user message (more meaningful than first)
+  const userMsgs=chatHistory.filter(m=>m.role==='user');
+  const title=(userMsgs[1]||userMsgs[0])?.content?.slice(0,42)||'Chat';
+  const chat={id:currentChatId,title,messages:chatHistory.slice(),ts:Date.now()};
+  allChats[currentChatId]=chat;
+  try{
+    await fetch(`/chats/${currentChatId}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(chat)
+    });
+  }catch(e){console.warn('[Chat save]',e);}
+  renderHistoryList();
+}
+
+async function loadChats(){
+  try{
+    const r=await fetch('/chats');
+    if(r.ok) allChats=await r.json();
+    else allChats={};
+  }catch(e){allChats={};}
+  renderHistoryList();
+}
+
+async function deleteChat(id,e){
+  if(e){e.stopPropagation();e.preventDefault();}
+  if(!confirm('Delete this chat?')) return;
+  try{await fetch(`/chats/${id}`,{method:'DELETE'});}catch(e){}
+  delete allChats[id];
+  if(id===currentChatId) newChat();
+  else renderHistoryList();
+}
+
+function renderHistoryList(filter=''){
+  const list=document.getElementById('historyList');if(!list)return;list.innerHTML='';
+  const chats=Object.values(allChats).sort((a,b)=>b.ts-a.ts)
+    .filter(c=>!filter||c.title.toLowerCase().includes(filter.toLowerCase()));
+  if(!chats.length){
+    list.innerHTML='<div style="padding:16px;text-align:center;color:var(--t3);font-size:11px">No chats yet</div>';
+    return;
+  }
+  const today=new Date().toDateString(),yesterday=new Date(Date.now()-86400000).toDateString();
+  let lastD='';
+  chats.forEach(c=>{
+    const d=new Date(c.ts).toDateString();
+    const lbl=d===today?'Today':d===yesterday?'Yesterday':new Date(c.ts).toLocaleDateString();
+    if(lbl!==lastD){
+      const dEl=document.createElement('div');dEl.className='history-date';dEl.textContent=lbl;
+      list.appendChild(dEl);lastD=lbl;
+    }
+    const item=document.createElement('div');
+    item.className='history-item'+(c.id===currentChatId?' active':'');
+    item.innerHTML=`
+      <div style="display:flex;align-items:center;gap:4px">
+        <div class="history-item-title" style="flex:1;min-width:0">${c.title}</div>
+        <button class="del-chat-btn" data-id="${c.id}" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:1px 4px;border-radius:3px;flex-shrink:0;line-height:1">✕</button>
+      </div>
+      <div class="history-item-meta">${new Date(c.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>`;
+    item.querySelector('.del-chat-btn').addEventListener('click',ev=>deleteChat(c.id,ev));
+    item.addEventListener('click',()=>loadChat(c.id));
+    list.appendChild(item);
+  });
+}
+
+function loadChat(id){
+  const c=allChats[id];if(!c)return;
+  currentChatId=id;chatHistory=c.messages.slice();
+  const container=document.getElementById('chatMessages');if(!container)return;
+  container.innerHTML='';chatHistory.forEach(m=>addMessage(m.role==='user'?'user':'vega',m.content));
+  renderHistoryList();
+}
+function newChat(){
+  currentChatId=Date.now().toString();chatHistory=[];
+  const c=document.getElementById('chatMessages');if(c)c.innerHTML='';
+  renderHistoryList();setEmotion('neutral');
+  document.getElementById('vegaInput')?.focus();
+}
+function filterHistory(v){renderHistoryList(v);}
+
+// ════════════════════════════════════════════
+//  DEV PANEL — live preview canvas
+// ════════════════════════════════════════════
+const devCanvas=document.getElementById('devPreviewCanvas');
+const devCtx=devCanvas.getContext('2d');
+const DW=200,DH=128,DCX=DW/2,DCY=DH/2;
+// Mini eye constants (scaled down ~0.71x from main)
+const D_EW=54,D_EH=41,D_GAP=22;
+const D_LX=DCX-D_EW-D_GAP/2, D_RX=DCX+D_GAP/2, D_EY=DCY-D_EH/2;
+let devEmotion='neutral';
+let devSweatDrops=[],devHeartParticles=[],devZzz=[];
+let devLastTs=0;
+
+function devRRect(x,y,w,h,r,fill){
+  r=Math.max(0,Math.min(r,w/2,h/2));
+  devCtx.beginPath();
+  devCtx.moveTo(x+r,y);devCtx.lineTo(x+w-r,y);devCtx.quadraticCurveTo(x+w,y,x+w,y+r);
+  devCtx.lineTo(x+w,y+h-r);devCtx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  devCtx.lineTo(x+r,y+h);devCtx.quadraticCurveTo(x,y+h,x,y+h-r);
+  devCtx.lineTo(x,y+r);devCtx.quadraticCurveTo(x,y,x+r,y);
+  devCtx.closePath();if(fill){devCtx.fillStyle=fill;devCtx.fill();}
+}
+
+function devDrawEye(x,y,w,h,br,tH,aH,hapOff,col){
+  if(h<1)return;
+  devRRect(x,y,w,h,br,col);
+  if(tH>0.5){
+    devCtx.save();devCtx.globalCompositeOperation='destination-out';devCtx.beginPath();
+    devCtx.moveTo(x,y-1);devCtx.lineTo(x+w,y-1);devCtx.lineTo(x,y+tH-1);
+    devCtx.closePath();devCtx.fillStyle='#000';devCtx.fill();devCtx.restore();
+  }
+  if(aH>0.5){
+    devCtx.save();devCtx.globalCompositeOperation='destination-out';devCtx.beginPath();
+    devCtx.moveTo(x,y-1);devCtx.lineTo(x+w,y-1);devCtx.lineTo(x+w,y+aH-1);
+    devCtx.closePath();devCtx.fillStyle='#000';devCtx.fill();devCtx.restore();
+  }
+  if(hapOff>0.5){
+    devCtx.save();devCtx.globalCompositeOperation='destination-out';
+    devRRect(x-1,(y+h)-hapOff+1,w+2,h+4,br,'#000');devCtx.restore();
+  }
+  // pupil (mini, always show in preview for both styles)
+  const pr=Math.min(w,h)*0.3;
+  devCtx.beginPath();devCtx.arc(x+w*0.5,y+h*0.5,pr,0,Math.PI*2);
+  devCtx.fillStyle='rgba(0,0,0,0.85)';devCtx.fill();
+  devCtx.beginPath();devCtx.arc(x+w*0.5-pr*0.28,y+h*0.5-pr*0.28,pr*0.22,0,Math.PI*2);
+  devCtx.fillStyle='rgba(255,255,255,0.8)';devCtx.fill();
+}
+
+function devRenderFrame(ts){
+  if(!document.getElementById('devPanel').classList.contains('open')){devLastTs=ts;requestAnimationFrame(devRenderFrame);return;}
+  devCtx.clearRect(0,0,DW,DH);
+  const em=EMOTIONS[devEmotion];if(!em){requestAnimationFrame(devRenderFrame);return;}
+  const col=em.color;
+  // Background tint
+  devCtx.fillStyle=col+'18';devCtx.fillRect(0,0,DW,DH);
+  // Draw based on emotion state (simplified mirror of main canvas)
+  const d=devEmotionState(devEmotion,ts);
+  if(d.battery){
+    // battery
+    const bw=90,bh=36,bx=DCX-bw/2,by=DCY-bh/2;
+    devCtx.strokeStyle=col;devCtx.lineWidth=1.5;
+    devRRect(bx,by,bw,bh,5,null);devCtx.stroke();
+    devRRect(bx+bw+1,DCY-6,5,12,2,col);devCtx.fill();
+    const fw=Math.max(3,(bw-6)*d.batLevel);
+    devRRect(bx+3,by+3,fw,bh-6,3,col);
+    devCtx.fillStyle=col;devCtx.font='bold 10px "JetBrains Mono",monospace';devCtx.textAlign='center';devCtx.textBaseline='middle';
+    devCtx.fillText(Math.round(d.batLevel*100)+'%',DCX,DCY);
+  } else if(d.question){
+    devCtx.fillStyle=col;devCtx.font='bold 68px "Syne",sans-serif';devCtx.textAlign='center';devCtx.textBaseline='middle';devCtx.fillText('?',DCX,DCY+3);
+  } else if(d.sleep){
+    devCtx.fillStyle=col;devRRect(D_LX,D_EY+D_EH/2-1,D_EW,2,1,col);
+    devRRect(D_RX,D_EY+D_EH/2-1,D_EW,2,1,col);
+    devCtx.fillStyle=col;devCtx.font='bold 14px "Space Grotesk",sans-serif';devCtx.textAlign='center';devCtx.textBaseline='middle';devCtx.fillText('z z z',DCX,D_EY-12);
+  } else {
+    const lx=D_LX+d.sx,ly=D_EY+d.sy,rx=D_RX+d.sx,ry=D_EY+d.sy;
+    const br=eyeStyle==='square'?3:10;
+    devDrawEye(lx,ly,D_EW*d.lws,D_EH*d.lhs,br*d.brs,D_EH*d.tH,D_EH*d.aH,D_EH*d.hapOff,col);
+    devDrawEye(rx,ry,D_EW*d.rws,D_EH*d.rhs,br*d.brs,D_EH*d.tH,D_EH*d.aH,D_EH*d.hapOff,col);
+    // blush
+    if(d.blush){
+      devCtx.save();devCtx.globalAlpha=0.3;
+      const lg=devCtx.createRadialGradient(lx+D_EW*0.1,ly+D_EH+5,1,lx+D_EW*0.1,ly+D_EH+5,16);
+      lg.addColorStop(0,'#f472b6');lg.addColorStop(1,'rgba(244,114,182,0)');
+      devCtx.fillStyle=lg;devCtx.beginPath();devCtx.ellipse(lx+D_EW*0.1,ly+D_EH+5,16,10,0,0,Math.PI*2);devCtx.fill();
+      const rg=devCtx.createRadialGradient(rx+D_EW*0.9,ry+D_EH+5,1,rx+D_EW*0.9,ry+D_EH+5,16);
+      rg.addColorStop(0,'#f472b6');rg.addColorStop(1,'rgba(244,114,182,0)');
+      devCtx.fillStyle=rg;devCtx.beginPath();devCtx.ellipse(rx+D_EW*0.9,ry+D_EH+5,16,10,0,0,Math.PI*2);devCtx.fill();
+      devCtx.restore();
+    }
+    // tears for sad/crying
+    if(d.tears){
+      devCtx.fillStyle='rgba(96,165,250,0.7)';
+      [[lx+D_EW*0.3,ly+D_EH+4],[lx+D_EW*0.55,ly+D_EH+8],[rx+D_EW*0.3,ry+D_EH+4],[rx+D_EW*0.55,ry+D_EH+8]].forEach(([tx,ty],i)=>{
+        devCtx.beginPath();devCtx.arc(tx,ty+(ts*0.04+i*15)%22,d.tears?2.5:1.8,0,Math.PI*2);devCtx.fill();
+      });
+    }
+    // headphones for listening
+    if(d.headphones){
+      devCtx.save();devCtx.strokeStyle=col;devCtx.lineWidth=2;devCtx.lineCap='round';
+      devCtx.beginPath();devCtx.arc(lx+D_EW/2,ly,7,Math.PI*0.4,Math.PI*1.6);devCtx.stroke();
+      devCtx.beginPath();devCtx.arc(rx+D_EW/2,ry,7,Math.PI*1.4,Math.PI*2.6);devCtx.stroke();
+      devCtx.beginPath();devCtx.arc(DCX,(D_EY-14),rx-lx-2,Math.PI,0,false);devCtx.stroke();
+      devCtx.restore();
+    }
+  }
+  // emotion name
+  devCtx.fillStyle=col;devCtx.font='500 10px "Space Grotesk",sans-serif';devCtx.textAlign='center';devCtx.textBaseline='bottom';
+  devCtx.fillText(em.label,DCX,DH-4);
+  requestAnimationFrame(devRenderFrame);
+}
+
+// Simplified emotion state for dev preview
+function devEmotionState(name,ts){
+  const base={lws:1,rws:1,lhs:1,rhs:1,tH:0,aH:0,hapOff:0,brs:1,blush:false,tears:false,headphones:false,sleep:false,question:false,battery:false,batLevel:1,sx:0,sy:0};
+  const shake=ts?Math.sin(ts*0.05)*2:0;
+  switch(name){
+    case'happy':return{...base,hapOff:0.46};
+    case'sad':return{...base,tH:0.3,lhs:0.74,rhs:0.74,tears:true};
+    case'crying':return{...base,tH:0.62,lhs:0.52,rhs:0.52,lws:0.88,rws:0.88,tears:true};
+    case'ouch':return{...base,lhs:0.6,rhs:0.6,lws:0.7,rws:0.7,sx:shake};
+    case'hurt':return{...base,tH:0.4,lhs:0.65,rhs:0.65};
+    case'confused':return{...base,lws:0.84,rws:1.14,lhs:0.88,sx:Math.sin(ts*0.08)*3};
+    case'surprised':return{...base,lws:1.22,rws:1.22,lhs:1.26,rhs:1.26};
+    case'thinking':return{...base,lhs:0.88};
+    case'working':return{...base,lhs:0.82,rhs:0.82};
+    case'sleepy':return{...base,tH:0.54,lhs:0.54,rhs:0.54};
+    case'sleeping':return{...base,sleep:true};
+    case'excited':return{...base,lws:1.16,rws:1.16,lhs:1.12+Math.abs(Math.sin(ts*0.018))*0.1,rhs:1.12+Math.abs(Math.sin(ts*0.018))*0.1};
+    case'listening':return{...base,lws:1.06,rws:1.06,lhs:1.06,rhs:1.06,headphones:true};
+    case'speaking':return{...base,lhs:0.9+Math.sin(ts*0.02)*0.05,rhs:0.9+Math.sin(ts*0.02)*0.05};
+    case'angry':case'frustrated':return{...base,aH:name==='frustrated'?0.58:0.44};
+    case'love':return{...base,lhs:1.06,rhs:1.06,hapOff:0.1};
+    case'blush':return{...base,lhs:0.9,rhs:0.9,hapOff:0.22,blush:true};
+    case'nervous':return{...base,lhs:0.82,rhs:0.82,sx:Math.sin(ts*0.06)*1.5,sy:Math.sin(ts*0.07)*1.5};
+    case'pleading':return{...base,lws:1.3,rws:1.3,lhs:1.3,rhs:1.3,brs:1.5};
+    case'sarcastic':return{...base,lhs:0.40,rhs:0.72,tH:0.20};
+    case'alert':return{...base,lws:1.2,rws:1.2,lhs:1.2,rhs:1.2};
+    case'speechless':return{...base,lws:1.32,rws:1.32,lhs:1.32,rhs:1.32};
+    case'chilling':return{...base,tH:0.26,lhs:0.72,rhs:0.72};
+    case'curious':return{...base,lws:0.84,rws:1.22,lhs:0.9,rhs:1.12};
+    case'laugh':return{...base,hapOff:0.55,sy:Math.sin(ts*0.02)*3};
+    case'music':return{...base,lhs:0.88,rhs:0.88,hapOff:0.22,sy:Math.sin(ts*0.003)*3};
+    case'question':return{...base,question:true};
+    case'battery_high':return{...base,battery:true,batLevel:0.82};
+    case'battery_mid':return{...base,battery:true,batLevel:0.44};
+    case'battery_low':return{...base,battery:true,batLevel:0.11};
+    default:return base;
+  }
+}
+
+function buildDevPanel(){
+  const grid=document.getElementById('devGrid');if(!grid)return;grid.innerHTML='';
+  Object.entries(EMOTIONS).forEach(([key,em])=>{
+    const btn=document.createElement('button');btn.className='dev-btn';btn.dataset.emotion=key;
+    btn.textContent=em.label||key;btn.style.borderColor=em.color+'55';
+    btn.onclick=()=>{
+      devEmotion=key;
+      setEmotion(key);// also apply to main face
+      document.getElementById('devPreviewLabel').textContent=em.label;
+      document.getElementById('devPreviewLabel').style.color=em.color;
+    };
+    grid.appendChild(btn);
+  });
+  requestAnimationFrame(devRenderFrame);
+}
+function openDevPanel(){document.getElementById('devPanel').classList.add('open');}
+function closeDevPanel(){document.getElementById('devPanel').classList.remove('open');}
+document.addEventListener('keydown',e=>{
+  if(e.key==='`'||e.key==='~'){document.getElementById('devPanel').classList.toggle('open');e.preventDefault();}
+  if(e.key==='Escape')closeDevPanel();
+});
+
+// ════════════════════════════════════════════
+//  BATTERY MONITORING
+// ════════════════════════════════════════════
+let batteryObj=null;
+let lastBatteryLevel=-1;
+let batteryWarned=false;
+
+async function initBattery(){
+  if(!('getBattery' in navigator)) return;
+  try{
+    batteryObj=await navigator.getBattery();
+    updateBatteryDisplay();
+    batteryObj.addEventListener('levelchange',onBatteryChange);
+    batteryObj.addEventListener('chargingchange',onBatteryChange);
+    // Poll every 30s as backup
+    setInterval(updateBatteryDisplay,30000);
+  }catch(e){console.warn('[Battery]',e);}
+}
+
+function onBatteryChange(){updateBatteryDisplay();}
+
+function updateBatteryDisplay(){
+  if(!batteryObj) return;
+  const pct=Math.round(batteryObj.level*100);
+  const charging=batteryObj.charging;
+  const el=document.getElementById('dashBattery');
+  const elS=document.getElementById('dashBatteryStatus');
+  if(el){
+    el.textContent=pct+'%';
+    el.style.color=pct>60?'var(--green)':pct>20?'var(--amber)':'var(--red)';
+  }
+  if(elS) elS.textContent=charging?'⚡ Charging':'On battery';
+
+  // Auto-trigger expression on significant change
+  if(Math.abs(pct-lastBatteryLevel)>=5||lastBatteryLevel===-1){
+    lastBatteryLevel=pct;
+    // Show battery expression briefly if in normal state
+    if(!['sleeping','sleepy','crying','sad'].includes(currentEmotion)){
+      if(pct<=15&&!charging&&!batteryWarned){
+        batteryWarned=true;
+        setEmotion('battery_low');
+        // Proactive warning
+        proactiveSpeak(`Sir, battery is at ${pct}%. Please plug in soon.`);
+      } else if(pct>15&&pct<=30&&!charging){
+        setEmotion('battery_mid');
+        setTimeout(()=>{if(currentEmotion==='battery_mid')setEmotion('neutral');},4000);
+      }
+      if(charging&&pct>15) batteryWarned=false;
+    }
+  }
+}
+
+// ════════════════════════════════════════════
+//  PROACTIVE SPEECH — Vega talks on its own
+// ════════════════════════════════════════════
+let lastProactiveMs=0;
+const PROACTIVE_COOLDOWN=60000; // min 1 min between proactive messages
+
+function proactiveSpeak(text,emotion){
+  const now=Date.now();
+  if(now-lastProactiveMs<PROACTIVE_COOLDOWN) return;
+  lastProactiveMs=now;
+  if(emotion) setEmotion(emotion);
+  addMessage('vega',text);
+  chatHistory.push({role:'assistant',content:text});
+  speak(text);
+}
+
+// Proactive: idle for 2 minutes — Vega starts a conversation
+let proactiveIdleTimer=null;
+const PROACTIVE_IDLE_MS=120000; // 2 minutes
+
+const PROACTIVE_IDLE_MSGS=[
+  {text:"Sir, I'm here if you need anything.",emotion:'chilling'},
+  {text:"Just checking in, sir — all good?",emotion:'curious'},
+  {text:"Whenever you're ready, sir.",emotion:'neutral'},
+  {text:"Bit quiet today, sir. Need anything?",emotion:'chilling'},
+];
+
+function resetProactiveIdleTimer(){
+  clearTimeout(proactiveIdleTimer);
+  proactiveIdleTimer=setTimeout(()=>{
+    if(!wsReady||currentEmotion==='sleeping') return;
+    const msg=PROACTIVE_IDLE_MSGS[Math.floor(Math.random()*PROACTIVE_IDLE_MSGS.length)];
+    proactiveSpeak(msg.text,msg.emotion);
+  },PROACTIVE_IDLE_MS);
+}
+
+// Proactive: user hovers over vegaInput while mic is active
+document.addEventListener('mouseover',e=>{
+  const vi=document.getElementById('vegaInput');
+  if(vi&&e.target===vi&&micActive){
+    const now=Date.now();
+    if(now-lastProactiveMs>15000){
+      lastProactiveMs=now;
+      showToast('Voice input is active — you can speak instead');
+      setEmotion('curious');
+      setTimeout(()=>{if(currentEmotion==='curious')setEmotion('neutral');},2000);
+    }
+  }
+});
+
+// ════════════════════════════════════════════
+//  TOAST
+// ════════════════════════════════════════════
+let toastTimer=null;
+function showToast(msg){
+  const t=document.getElementById('toast');if(!t)return;
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+// ════════════════════════════════════════════
+//  RESIZE OBSERVER
+// ════════════════════════════════════════════
+new ResizeObserver(()=>resizeCanvas()).observe(document.getElementById('panel-vega'));
+
+// ════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════
+window.addEventListener('load',async()=>{
+  rebuildPanels();
+  resizeCanvas();
+  await loadChats();
+  buildDevPanel();
+  connectWS();
+  initBattery();
+  resetProactiveIdleTimer();
+
+  // Reset proactive timer on any user activity
+  document.addEventListener('keydown',resetProactiveIdleTimer);
+  document.addEventListener('click',resetProactiveIdleTimer);
+
+  // Mode 2 (clean) active by default
+  document.getElementById('modeBtn2').classList.add('active');
+
+  // Greeting expression based on time
+  const hr=new Date().getHours();
+  setTimeout(()=>{
+    if(hr>=22||hr<5) setEmotion('sleepy');
+    else if(hr>=17) setEmotion('chilling');
+    else setEmotion('happy');
+    setTimeout(()=>setEmotion('neutral'),3200);
+  },700);
+});
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 brain.py — VEGA
 Smart routing: query classification → local intercept → search → groq.
 BS4 filtering for web content. Response length control.
+WhatsApp intent detection + message extraction.
 """
 
 import os
@@ -52,7 +53,131 @@ Examples:
 - Wholesome/warm → [EMOTION:happy]
 The emotion tag MUST be the very last line. Nothing after it."""
 
-# ── Query type classification — pure Python, no AI call ──────────────────────
+# ── WhatsApp Intent Detection ─────────────────────────────────────────────────
+WHATSAPP_PATTERNS = [
+    r'\b(message|msg|text|whatsapp|wa|send)\b.{0,40}\b(to|that|saying|say)\b',
+    r'\b(send|tell|inform|let|notify)\b.{0,20}\b(message|msg|text)\b',
+    r'\b(message|text|whatsapp)\b.{0,30}(that|to say|saying|:)',
+    r'\btell\b.{0,30}\bthat\b',
+    r'\bsend\b.{0,30}\b(him|her|them)\b',
+]
+
+def is_whatsapp_intent(text: str) -> bool:
+    """Detect if user wants to send a WhatsApp message."""
+    t = text.lower().strip()
+    for pattern in WHATSAPP_PATTERNS:
+        if re.search(pattern, t):
+            return True
+    return False
+
+async def extract_whatsapp_details(user_input: str) -> dict:
+    """
+    Use Groq (light model) to extract contact name and message from natural language.
+    Rephrases the message naturally from the sender's perspective.
+    Returns: { contact: str, message: str } or { error: str }
+    """
+    prompt = f"""Extract the WhatsApp recipient and message from this instruction.
+The message must be rephrased naturally as if the sender is directly texting that person.
+Convert third-person/indirect phrasing into direct first/second person messages.
+Return ONLY valid JSON with exactly two keys: "contact" and "message".
+No explanation, no markdown, no extra text.
+
+Examples:
+Input: "message Manikanta that where he is now"
+Output: {{"contact": "Manikanta", "message": "Where are you now?"}}
+
+Input: "send a message to manikanta that where he is now"
+Output: {{"contact": "Manikanta", "message": "Where are you now?"}}
+
+Input: "tell ravi that I will be late"
+Output: {{"contact": "ravi", "message": "I will be late"}}
+
+Input: "message mom that when she is coming home"
+Output: {{"contact": "mom", "message": "When are you coming home?"}}
+
+Input: "tell priya that the meeting is at 3pm"
+Output: {{"contact": "priya", "message": "The meeting is at 3pm"}}
+
+Input: "send ravi a message saying I'll be late"
+Output: {{"contact": "ravi", "message": "I'll be late"}}
+
+Input: "message Manikanta that call my sir when you are free"
+Output: {{"contact": "Manikanta", "message": "Please call sir when you are free"}}
+
+Input: "tell mom that dinner is ready"
+Output: {{"contact": "mom", "message": "Dinner is ready"}}
+
+Now extract from:
+Input: "{user_input}"
+Output:"""
+
+    try:
+        response = await _call_groq(
+            MODEL_LIGHT,
+            [{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=80
+        )
+        # Parse JSON
+        import json
+        clean = response.strip().strip("```json").strip("```").strip()
+        data = json.loads(clean)
+        if "contact" in data and "message" in data:
+            return data
+        return {"error": "Could not parse contact/message"}
+    except Exception as e:
+        return {"error": str(e)}
+
+# ── Music Intent Detection ────────────────────────────────────────────────────
+MUSIC_PLAY_PATTERNS = [
+    r'\b(play|stream|put on|start playing|play me)\b.{0,50}',
+    r'\b(song|music|track|album)\b.{0,30}\b(play|start|put)\b',
+]
+MUSIC_STOP_PATTERNS = [
+    r'\b(stop|pause|mute|quiet|silence|turn off|shut up).{0,20}(music|song|playing|that)\b',
+    r'\b(stop|pause)\b.{0,10}(the music|the song|playing)\b',
+    r'^(stop|pause|stop music|stop the music|stop song)$',
+]
+MUSIC_RESUME_PATTERNS = [
+    r'\b(resume|continue|unpause|play again|restart).{0,20}(song|music|playing|it|that)?\b',
+    r'\b(play it again|play that again|play the same)\b',
+]
+MUSIC_STATUS_PATTERNS = [
+    r'\b(what.?s playing|what song|now playing|currently playing|what are you playing)\b',
+]
+
+def is_music_intent(text: str) -> str:
+    """
+    Returns 'play' | 'stop' | 'resume' | 'status' | None
+    """
+    t = text.lower().strip()
+    for p in MUSIC_STOP_PATTERNS:
+        if re.search(p, t):
+            return 'stop'
+    for p in MUSIC_RESUME_PATTERNS:
+        if re.search(p, t):
+            return 'resume'
+    for p in MUSIC_STATUS_PATTERNS:
+        if re.search(p, t):
+            return 'status'
+    for p in MUSIC_PLAY_PATTERNS:
+        if re.search(p, t):
+            # Make sure it has an actual song query, not just "play" alone
+            query = extract_song_query(t)
+            if len(query.strip()) > 1:
+                return 'play'
+    return None
+
+def extract_song_query(text: str) -> str:
+    """Extract the song/artist name from a play request."""
+    t = text.strip()
+    prefixes = [
+        r'^(vega,?\s*)?(please\s*)?(can you\s*)?(resume|restart|play again|play me|play|stream|put on|start playing)\s*',
+        r'\b(song|track|music)\s*(called|named|by)?\s*',
+    ]
+    for prefix in prefixes:
+        t = re.sub(prefix, '', t, flags=re.IGNORECASE).strip()
+    return t if t else text
 # Temporal patterns that ALWAYS need fresh data
 TEMPORAL_PATTERNS = [
     r'\b(current|present|now|today|tonight|this (week|month|year))\b',
@@ -167,6 +292,74 @@ async def summarize_search(query: str, raw_results: str) -> str:
 # ── Main process ──────────────────────────────────────────────────────────────
 async def process(user_input: str, history: list) -> str:
     from search import smart_search
+
+    # ── WhatsApp intent check FIRST ───────────────────────────────────────────
+    if is_whatsapp_intent(user_input):
+        details = await extract_whatsapp_details(user_input)
+        if "error" not in details:
+            from vega_whatsapp import send_message_to_contact
+            result = send_message_to_contact(details["contact"], details["message"])
+            if result["success"]:
+                return (
+                    f"Done, sir. Message sent to {result['name']}.\n"
+                    f"[EMOTION:cool]"
+                )
+            else:
+                err = result.get("error", "Unknown error")
+                name = result.get("name", details["contact"])
+                return (
+                    f"Couldn't send the message to {name}, sir. {err}\n"
+                    f"[EMOTION:nervous]"
+                )
+        return (
+            "Sorry sir, I couldn't figure out who to message or what to say. "
+            "Try: 'Message Ravi that I'll be late'.\n[EMOTION:confused]"
+        )
+
+    # ── Music intent check ────────────────────────────────────────────────────
+    music_intent = is_music_intent(user_input)
+    if music_intent:
+        from vega_music import play_song, stop_song, get_now_playing
+
+        if music_intent == 'stop':
+            result = stop_song()
+            if result.get("stopped"):
+                return f"Stopped the music, sir.\n[EMOTION:neutral]"
+            return "Nothing is playing, sir.\n[EMOTION:neutral]"
+
+        if music_intent == 'resume':
+            from vega_music import _last_query, _last_song
+            if _last_query:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, play_song, _last_query)
+                if result["success"]:
+                    return (
+                        f"Restarting {result['title']} from the beginning, sir.\n"
+                        f"[EMOTION:music]"
+                    )
+            return "No recent song to resume, sir. Tell me what to play.\n[EMOTION:neutral]"
+
+        if music_intent == 'status':
+            info = get_now_playing()
+            if info["playing"]:
+                return f"Playing {info['title']} by {info['artist']}, sir.\n[EMOTION:music]"
+            return "Nothing is playing right now, sir.\n[EMOTION:neutral]"
+
+        if music_intent == 'play':
+            query = extract_song_query(user_input)
+            print(f"[Music intent] query={query}")
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, play_song, query)
+            if result["success"]:
+                return (
+                    f"Playing {result['title']} by {result['artist']}, sir.\n"
+                    f"[EMOTION:music]"
+                )
+            else:
+                return (
+                    f"Couldn't play that, sir. {result.get('error','Unknown error')}\n"
+                    f"[EMOTION:nervous]"
+                )
 
     qtype = classify_query(user_input)
     print(f"[Query type] {qtype} | {user_input[:60]}")

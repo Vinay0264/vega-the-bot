@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from groq import AsyncGroq
 from dotenv import load_dotenv
@@ -27,6 +27,9 @@ HOST        = os.getenv("HOST", "localhost")
 PORT        = int(os.getenv("PORT", 2004))
 USER_NAME   = os.getenv("USER_NAME",  "Vinay")
 AGENT_NAME  = os.getenv("AGENT_NAME", "Vega")
+
+# ── Track connected WebSocket clients ─────────────────────────────────────────
+connected_clients: list = []
 
 # ── Chat storage path ─────────────────────────────────────────────────────────
 CHATS_FILE = Path(__file__).parent / "chats.json"
@@ -128,10 +131,19 @@ async def root():
 async def health():
     return {"status":"online","agent":"VEGA","port":PORT}
 
+# ── Serve vega-eyes.js and any other local .js files ─────────────────────────
+@app.get("/{filename}.js")
+async def serve_js(filename: str):
+    path = Path(__file__).parent / f"{filename}.js"
+    if path.exists():
+        return FileResponse(path, media_type="application/javascript")
+    return JSONResponse({"error": "not found"}, status_code=404)
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    connected_clients.append(websocket)
     history: list = []
 
     hour = datetime.now().hour
@@ -164,21 +176,44 @@ async def websocket_endpoint(websocket: WebSocket):
 
             compressed = await compress_history(history)
 
-            from brain import process
+            from brain import process, is_whatsapp_intent, extract_whatsapp_details, is_music_intent, extract_song_query
             response_text = await process(user_input, compressed)
 
-            history.append({"role":"user",      "content":user_input})
-            history.append({"role":"assistant",  "content":response_text})
-
+            history.append({"role": "user",      "content": user_input})
+            history.append({"role": "assistant",  "content": response_text})
             if len(history) > 60:
                 history = history[-40:]
 
-            await websocket.send_json({"type":"response","text":response_text})
+            # WhatsApp sent — special card
+            if is_whatsapp_intent(user_input) and "[EMOTION:cool]" in response_text:
+                details = await extract_whatsapp_details(user_input)
+                await websocket.send_json({
+                    "type": "whatsapp_sent",
+                    "text": response_text,
+                    "contact": details.get("contact", ""),
+                    "message": details.get("message", "")
+                })
+            # Music playing — special card (play OR resume)
+            elif "[EMOTION:music]" in response_text and is_music_intent(user_input) in ('play', 'resume'):
+                from vega_music import _last_query, _current_song, _current_artist
+                await websocket.send_json({
+                    "type": "music_playing",
+                    "text": response_text,
+                    "query": _last_query,
+                    "title": _current_song,
+                    "artist": _current_artist,
+                })
+            else:
+                await websocket.send_json({"type": "response", "text": response_text})
 
     except WebSocketDisconnect:
         print("[WS] Client disconnected.")
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
     except Exception as e:
         print(f"[WS error] {e}")
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
         try:
             await websocket.send_json({"type":"error","text":"Something went wrong."})
         except:

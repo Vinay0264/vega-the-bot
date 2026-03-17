@@ -118,6 +118,24 @@ input,textarea{font-family:inherit;outline:none;border:none;background:none}
 .msg-bubble pre{background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);padding:9px;margin:6px 0;overflow-x:auto;font-family:var(--mono);font-size:11px;user-select:text}
 .msg-bubble strong{font-weight:600}
 
+/* WhatsApp sent card */
+.wa-card{margin-top:6px;background:rgba(37,211,102,0.07);border:1px solid rgba(37,211,102,0.25);border-radius:10px;padding:8px 11px;display:flex;align-items:center;gap:9px}
+.wa-card-icon{width:28px;height:28px;border-radius:50%;background:rgba(37,211,102,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.wa-card-icon svg{width:15px;height:15px;fill:#25d366}
+.wa-card-body{flex:1;min-width:0}
+.wa-card-to{font-size:11px;color:#25d366;font-family:var(--mono);font-weight:600;margin-bottom:2px}
+.wa-card-msg{font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Music now playing card */
+.music-card{margin-top:6px;background:rgba(180,144,255,0.07);border:1px solid rgba(180,144,255,0.25);border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:10px}
+.music-card-icon{width:32px;height:32px;border-radius:8px;background:rgba(180,144,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:musicPulse 1.5s ease-in-out infinite}
+@keyframes musicPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.music-card-icon svg{width:16px;height:16px;fill:var(--accent2)}
+.music-card-body{flex:1;min-width:0}
+.music-card-title{font-size:12px;font-weight:600;color:var(--accent2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.music-card-artist{font-size:11px;color:var(--t2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.music-card-badge{font-size:10px;color:var(--accent2);font-family:var(--mono);border:1px solid rgba(180,144,255,0.3);border-radius:20px;padding:1px 7px;flex-shrink:0}
+
 /* task status bar */
 .task-bar{padding:5px 11px;background:rgba(94,231,223,0.04);border-bottom:1px solid rgba(94,231,223,0.08);font-size:11px;font-family:var(--mono);color:var(--accent);display:none;align-items:center;gap:7px;flex-shrink:0}
 .task-bar.active{display:flex}
@@ -340,891 +358,715 @@ input,textarea{font-family:inherit;outline:none;border:none;background:none}
 
 <div class="toast" id="toast"></div>
 
+
 <script>
 // ════════════════════════════════════════════
-//  CANVAS FACE ENGINE
+//  CANVAS FACE ENGINE — from vega-eyes.js
 // ════════════════════════════════════════════
-const canvas=document.getElementById('vegaCanvas');
-const ctx=canvas.getContext('2d');
-const CW=280,CH=180,CX=CW/2,CY=CH/2;
-const EYE_W=76,EYE_H=58,EYE_GAP=30;
-const EYE_BR_ROUND=14,EYE_BR_SQUARE=4;
-const EYE_LX=CX-EYE_W-EYE_GAP/2;
-const EYE_RX=CX+EYE_GAP/2;
-const EYE_Y=CY-EYE_H/2;
+const canvas = document.getElementById('vegaCanvas');
+const ctx    = canvas.getContext('2d');
 
-let eyeStyle='pupils'; // 'pupils' | 'square'
+const CW = 280, CH = 180, CX = CW/2, CY = CH/2;
+const EYE_W = 76, EYE_H = 58, EYE_GAP = 30;
+const EYE_BR_ROUND = 14, EYE_BR_SQUARE = 4;
+const EYE_LX = CX - EYE_W - EYE_GAP/2;
+const EYE_RX = CX + EYE_GAP/2;
+const EYE_Y  = CY - EYE_H/2;
 
-const E={
-  lx:EYE_LX,ly:EYE_Y,lw:EYE_W,lh:EYE_H,lbr:EYE_BR_ROUND,
-  rx:EYE_RX,ry:EYE_Y,rw:EYE_W,rh:EYE_H,rbr:EYE_BR_ROUND,
-  gap:EYE_GAP,tiredH:0,angryH:0,happyOff:0,
-  pupilX:0.5,pupilY:0.5,pupilSize:0.36,
-  lxC:EYE_LX,lyC:EYE_Y,lwC:EYE_W,lhC:1,lbrC:EYE_BR_ROUND,
-  rxC:EYE_RX,ryC:EYE_Y,rwC:EYE_W,rhC:1,rbrC:EYE_BR_ROUND,
-  gapC:EYE_GAP,tiredHC:0,angryHC:0,happyOffC:0,
-  pupilXC:0.5,pupilYC:0.5,pupilSizeC:0.36,
-  color:'#5ee7df',pupilColor:'#07090f',glintColor:'rgba(255,255,255,0.85)',
-  isBlinking:false,heartPupils:false,
-  questionMode:false,batteryMode:false,batteryLevel:1,
-  clockMode:false,clockHover:false,blushMode:false,sleepMode:false,
-  hFlicker:false,hAmp:0,hTog:false,
-  vFlicker:false,vAmp:0,vTog:false,
+const ES_MAX = 12;   // square mode cursor tracking intensity — increase to follow more
+const LP     = 0.11; // lerp smoothness — higher = faster
+
+let eyeStyle = 'pupils'; // 'pupils' | 'square'
+function getBR(){ return eyeStyle === 'square' ? EYE_BR_SQUARE : EYE_BR_ROUND; }
+
+// ── Targets (what we animate toward) ──
+const T = {
+  lx:EYE_LX, ly:EYE_Y, lw:EYE_W, lh:EYE_H, lbr:EYE_BR_ROUND,
+  rx:EYE_RX, ry:EYE_Y, rw:EYE_W, rh:EYE_H, rbr:EYE_BR_ROUND,
+  tiredH:0, angryH:0, happyOff:0,
+  pupilX:0.5, pupilY:0.5, pupilSize:0.36,
+  color:'#5ee7df',
+  heartPupils:false, sleepMode:false, blushMode:false, chillingMode:false,
+  batteryMode:false, batteryLevel:1, clockMode:false, clockHover:false, questionMode:false,
+  esxT:0, esyT:0,
 };
 
-function getBR(){return eyeStyle==='square'?EYE_BR_SQUARE:EYE_BR_ROUND;}
+// ── Current values (lerped each frame) ──
+const C = {
+  lx:EYE_LX, ly:EYE_Y, lw:EYE_W, lhC:1,  lbr:EYE_BR_ROUND,
+  rx:EYE_RX, ry:EYE_Y, rw:EYE_W, rhC:1,  rbr:EYE_BR_ROUND,
+  tiredH:0, angryH:0, happyOff:0,
+  pupilX:0.5, pupilY:0.5, pupilSize:0.36,
+  esxC:0, esyC:0,
+};
 
-function resetEyeTargets(){
-  E.lx=EYE_LX;E.ly=EYE_Y;E.lw=EYE_W;E.lh=EYE_H;E.lbr=getBR();
-  E.rx=EYE_RX;E.ry=EYE_Y;E.rw=EYE_W;E.rh=EYE_H;E.rbr=getBR();
-  E.gap=EYE_GAP;E.tiredH=0;E.angryH=0;E.happyOff=0;
-  E.pupilX=0.5;E.pupilY=0.5;E.pupilSize=0.36;
-  E.hFlicker=false;E.vFlicker=false;
-  E.heartPupils=false;E.questionMode=false;
-  E.batteryMode=false;E.clockMode=false;E.blushMode=false;E.sleepMode=false;
-}
+// ── Eyebrow types (square mode) ──
+let browL = 'neutral', browR = 'neutral';
 
-const LP=0.11;
-function lp(a,b,t){return a+(b-a)*t;}
+// ── Blink state ──
+let isBlinking = false;
+let lastBlinkTs = 0, nextBlinkMs = 3000;
+
+// ── Particles ──
+let heartParticles = [], tearDrops = [], zzzParticles = [], musicNotes = [];
+let musicTimer = 0, musicMode = false;
+let musicPlaying = false; // for toggleMusic compat
+
+// ── Animation state ──
+let laughBounce = 0, laughPhase = 0;
+let scanLineY = 0, dizzyAngle = 0, shakeX = 0;
+
+// ── Cursor tracking ──
+const NO_CURSOR_MOODS = new Set(['working','sleeping','dizzy','unamused','ouch','hurt','crying','chilling']);
+
+// ════════════════════════════════════════════
+//  LERP & INTERPOLATION
+// ════════════════════════════════════════════
+function lp(a,b,t){ return a + (b-a)*t; }
+
 function interpEyes(){
-  const s=LP;
-  E.lwC=lp(E.lwC,E.lw,s);E.lhC=lp(E.lhC,E.lh,s);
-  E.lxC=lp(E.lxC,E.lx,s);E.lyC=lp(E.lyC,E.ly,s);E.lbrC=lp(E.lbrC,E.lbr,s);
-  E.rwC=lp(E.rwC,E.rw,s);E.rhC=lp(E.rhC,E.rh,s);
-  E.rxC=lp(E.rxC,E.rx,s);E.ryC=lp(E.ryC,E.ry,s);E.rbrC=lp(E.rbrC,E.rbr,s);
-  E.gapC=lp(E.gapC,E.gap,s);
-  E.tiredHC=lp(E.tiredHC,E.tiredH,s*0.65);
-  E.angryHC=lp(E.angryHC,E.angryH,s*0.65);
-  E.happyOffC=lp(E.happyOffC,E.happyOff,s*0.65);
-  E.pupilXC=lp(E.pupilXC,E.pupilX,s*1.5);
-  E.pupilYC=lp(E.pupilYC,E.pupilY,s*1.5);
-  E.pupilSizeC=lp(E.pupilSizeC,E.pupilSize,s);
+  C.lw  = lp(C.lw,  T.lw,  LP);  C.lhC = lp(C.lhC, T.lh,  LP);
+  C.lx  = lp(C.lx,  T.lx,  LP);  C.ly  = lp(C.ly,  T.ly,  LP);
+  C.lbr = lp(C.lbr, T.lbr, LP);
+  C.rw  = lp(C.rw,  T.rw,  LP);  C.rhC = lp(C.rhC, T.rh,  LP);
+  C.rx  = lp(C.rx,  T.rx,  LP);  C.ry  = lp(C.ry,  T.ry,  LP);
+  C.rbr = lp(C.rbr, T.rbr, LP);
+  C.tiredH   = lp(C.tiredH,   T.tiredH,   LP*0.65);
+  C.angryH   = lp(C.angryH,   T.angryH,   LP*0.65);
+  C.happyOff = lp(C.happyOff, T.happyOff, LP*0.65);
+  C.pupilX    = lp(C.pupilX,    T.pupilX,    LP*1.5);
+  C.pupilY    = lp(C.pupilY,    T.pupilY,    LP*1.5);
+  C.pupilSize = lp(C.pupilSize, T.pupilSize, LP);
+  C.esxC = lp(C.esxC, T.esxT, 0.16);
+  C.esyC = lp(C.esyC, T.esyT, 0.16);
 }
 
-function rRect(x,y,w,h,r,fill,stroke){
+// ════════════════════════════════════════════
+//  DRAWING PRIMITIVES
+// ════════════════════════════════════════════
+function rRect(x,y,w,h,r,fill,stroke,sw){
+  if(w<=0||h<=0) return;
   r=Math.max(0,Math.min(r,w/2,h/2));
   ctx.beginPath();
-  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
-  if(fill){ctx.fillStyle=fill;ctx.fill();}
-  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1.5;ctx.stroke();}
+  if(fill)  { ctx.fillStyle=fill; ctx.fill(); }
+  if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=sw||1.5; ctx.stroke(); }
 }
 
 function drawHeart(x,y,sz,color){
-  ctx.save();ctx.translate(x,y);ctx.fillStyle=color;ctx.beginPath();
+  ctx.save(); ctx.translate(x,y); ctx.fillStyle=color; ctx.beginPath();
   const s=sz*0.5;
-  ctx.moveTo(0,s*0.4);ctx.bezierCurveTo(-s*0.1,s*0.1,-s,-s*0.2,-s,-s*0.6);
+  ctx.moveTo(0,s*0.4);
+  ctx.bezierCurveTo(-s*0.1,s*0.1,-s,-s*0.2,-s,-s*0.6);
   ctx.bezierCurveTo(-s,-s,-s*0.3,-s*1.2,0,-s*0.4);
   ctx.bezierCurveTo(s*0.3,-s*1.2,s,-s,s,-s*0.6);
   ctx.bezierCurveTo(s,-s*0.2,s*0.1,s*0.1,0,s*0.4);
-  ctx.closePath();ctx.fill();ctx.restore();
+  ctx.closePath(); ctx.fill(); ctx.restore();
 }
 
-function drawBattery(cx,cy,level){
-  const bw=130,bh=52,br=8,x=cx-bw/2,y=cy-bh/2;
-  rRect(x,y,bw,bh,br,null,'rgba(255,255,255,0.25)');
-  rRect(x+bw+2,cy-9,7,18,3,'rgba(255,255,255,0.25)');
-  const fw=Math.max(4,(bw-8)*level);
-  rRect(x+4,y+4,fw,bh-8,br-2,level>0.5?'#4ade80':level>0.2?'#fbbf24':'#f87171');
-  ctx.fillStyle='rgba(255,255,255,0.9)';ctx.font='bold 14px "JetBrains Mono",monospace';
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(Math.round(level*100)+'%',cx,cy);
+function drawTeardrop(x,y,r,alpha){
+  ctx.save(); ctx.globalAlpha=alpha*0.9; ctx.fillStyle='rgba(96,165,250,0.9)';
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x-r*0.5,y-r*0.6); ctx.lineTo(x,y-r*2.2); ctx.lineTo(x+r*0.5,y-r*0.6);
+  ctx.closePath(); ctx.fill(); ctx.restore();
 }
 
-function drawQuestion(cx,cy){
-  ctx.save();ctx.fillStyle=E.color;ctx.font='bold 90px "Syne",sans-serif';
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=0.9;ctx.fillText('?',cx,cy+4);ctx.restore();
+// ── Eyelid cutouts ──
+function applyTiredCutout(x,y,w,h,isLeft){
+  if(C.tiredH<=0.5) return;
+  ctx.save(); ctx.globalCompositeOperation='destination-out'; ctx.beginPath();
+  if(isLeft){ ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x,y+C.tiredH-1); }
+  else      { ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x+w,y+C.tiredH-1); }
+  ctx.closePath(); ctx.fillStyle='#000'; ctx.fill(); ctx.restore();
 }
-
-function drawClock(cx,cy,hover){
-  const r=52,now=new Date(),h=now.getHours()%12,m=now.getMinutes(),s=now.getSeconds();
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='rgba(7,9,15,0.85)';ctx.fill();
-  ctx.strokeStyle=E.color;ctx.lineWidth=1.5;ctx.stroke();
-  for(let i=0;i<12;i++){
-    const a=(i/12)*Math.PI*2-Math.PI/2,r1=r-4,r2=i%3===0?r-11:r-7;
-    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);
-    ctx.strokeStyle=i%3===0?E.color:'rgba(255,255,255,0.18)';ctx.lineWidth=i%3===0?1.5:0.8;ctx.stroke();
-  }
-  if(hover){
-    ctx.fillStyle='rgba(7,9,15,0.9)';ctx.beginPath();ctx.arc(cx,cy,r-5,0,Math.PI*2);ctx.fill();
-    const hh=now.getHours().toString().padStart(2,'0'),mm=now.getMinutes().toString().padStart(2,'0');
-    ctx.fillStyle=E.color;ctx.font='bold 21px "JetBrains Mono",monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(hh+':'+mm,cx,cy-5);
-    ctx.font='10px "JetBrains Mono",monospace';ctx.fillStyle='rgba(94,231,223,0.55)';ctx.fillText(now.getHours()<12?'AM':'PM',cx,cy+12);
-  } else {
-    const ha=(h/12+m/720)*Math.PI*2-Math.PI/2;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(ha)*(r*0.5),cy+Math.sin(ha)*(r*0.5));ctx.strokeStyle='#e8edf8';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.stroke();
-    const ma=(m/60)*Math.PI*2-Math.PI/2;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(ma)*(r*0.72),cy+Math.sin(ma)*(r*0.72));ctx.strokeStyle='#e8edf8';ctx.lineWidth=1.8;ctx.stroke();
-    const sa=(s/60)*Math.PI*2-Math.PI/2;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(sa)*(r*0.78),cy+Math.sin(sa)*(r*0.78));ctx.strokeStyle=E.color;ctx.lineWidth=1;ctx.stroke();
-    ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=E.color;ctx.fill();
-  }
+function applyAngryCutout(x,y,w,h,isLeft){
+  if(C.angryH<=0.5) return;
+  ctx.save(); ctx.globalCompositeOperation='destination-out'; ctx.beginPath();
+  if(isLeft){ ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x+w,y+C.angryH-1); }
+  else      { ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x,y+C.angryH-1); }
+  ctx.closePath(); ctx.fillStyle='#000'; ctx.fill(); ctx.restore();
 }
-
-function drawBlush(lx,lw,rx,rw,ey,eh){
-  ctx.save();ctx.globalAlpha=0.32;
-  const lg=ctx.createRadialGradient(lx+lw*0.12,ey+eh+7,1,lx+lw*0.12,ey+eh+7,22);
-  lg.addColorStop(0,'#f472b6');lg.addColorStop(1,'rgba(244,114,182,0)');
-  ctx.fillStyle=lg;ctx.beginPath();ctx.ellipse(lx+lw*0.12,ey+eh+7,22,13,0,0,Math.PI*2);ctx.fill();
-  const rg=ctx.createRadialGradient(rx+rw*0.88,ey+eh+7,1,rx+rw*0.88,ey+eh+7,22);
-  rg.addColorStop(0,'#f472b6');rg.addColorStop(1,'rgba(244,114,182,0)');
-  ctx.fillStyle=rg;ctx.beginPath();ctx.ellipse(rx+rw*0.88,ey+eh+7,22,13,0,0,Math.PI*2);ctx.fill();
+function applyHappyCutout(x,y,w,h,br){
+  if(C.happyOff<=0.5) return;
+  ctx.save(); ctx.globalCompositeOperation='destination-out';
+  rRect(x-1,(y+h)-C.happyOff+1,w+2,h+4,br,'#000');
   ctx.restore();
 }
 
-// ── Eyebrow drawing — full expressive set ──
-// Each emotion gets distinct brow shapes. Brows carry the emotion in square mode.
-function drawEyebrow(x,y,w,type,color,ts){
-  ctx.save();ctx.strokeStyle=color;ctx.lineCap='round';ctx.lineJoin='round';
-  const bx=x+w*0.08, bw=w*0.84, by=y-10;
+// ════════════════════════════════════════════
+//  EYE DRAWING
+// ════════════════════════════════════════════
+
+// pupils mode eye
+function drawPupilEye(x,y,w,h,br,isLeft){
+  rRect(x,y,w,h,br,T.color);
+  applyTiredCutout(x,y,w,h,isLeft);
+  applyAngryCutout(x,y,w,h,isLeft);
+  applyHappyCutout(x,y,w,h,br);
+  if(T.heartPupils){
+    drawHeart(x+w*C.pupilX, y+h*C.pupilY, Math.min(w,h)*C.pupilSize*1.2, '#07090f');
+  } else {
+    const pr=Math.min(w,h)*C.pupilSize;
+    ctx.beginPath(); ctx.arc(x+w*C.pupilX, y+h*C.pupilY, pr, 0, Math.PI*2);
+    ctx.fillStyle='#07090f'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x+w*C.pupilX-pr*0.28, y+h*C.pupilY-pr*0.28, pr*0.22, 0, Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fill();
+  }
+}
+
+// square mode eye (no pupil)
+function drawSquareEye(x,y,w,h,br,isLeft){
+  rRect(x,y,w,h,br,T.color);
+  applyTiredCutout(x,y,w,h,isLeft);
+  applyAngryCutout(x,y,w,h,isLeft);
+  applyHappyCutout(x,y,w,h,br);
+}
+
+// chilling: 😌 closed arc
+function drawChillingEye(x,y,w,h){
+  ctx.save(); ctx.strokeStyle=T.color; ctx.lineWidth=4; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(x+w*0.08, y+h*0.52);
+  ctx.quadraticCurveTo(x+w*0.5, y+h*0.80, x+w*0.92, y+h*0.52);
+  ctx.stroke(); ctx.restore();
+}
+
+// unamused: 😑 thin flat line
+function drawUnamusedEye(x,y,w,h,br){
+  rRect(x,y,w,h,br,T.color);
+  const lineH=h*0.26, lineY=y+(h-lineH)/2;
+  ctx.save(); ctx.globalCompositeOperation='destination-out';
+  rRect(x,y,           w, lineY-y+1,           0,'#000');
+  rRect(x,lineY+lineH-1,w, y+h-(lineY+lineH)+2, 0,'#000');
+  ctx.restore();
+}
+
+// dizzy: 😵 X eyes
+function drawDizzyEye(x,y,w,h,br){
+  rRect(x,y,w,h,br,T.color);
+  ctx.save(); ctx.globalCompositeOperation='destination-out';
+  ctx.strokeStyle='#000'; ctx.lineWidth=Math.min(w,h)*0.17; ctx.lineCap='round';
+  const cx2=x+w*0.5, cy2=y+h*0.5, s=Math.min(w,h)*0.27;
+  ctx.beginPath(); ctx.moveTo(cx2-s,cy2-s); ctx.lineTo(cx2+s,cy2+s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx2+s,cy2-s); ctx.lineTo(cx2-s,cy2+s); ctx.stroke();
+  ctx.restore();
+}
+
+// working: scan line moving inside eye
+function drawScanEye(x,y,w,h,br){
+  rRect(x,y,w,h,br,T.color);
+  ctx.save();
+  const r2=Math.max(0,Math.min(br,w/2,h/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r2,y); ctx.lineTo(x+w-r2,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r2);
+  ctx.lineTo(x+w,y+h-r2); ctx.quadraticCurveTo(x+w,y+h,x+w-r2,y+h);
+  ctx.lineTo(x+r2,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r2);
+  ctx.lineTo(x,y+r2); ctx.quadraticCurveTo(x,y,x+r2,y);
+  ctx.closePath(); ctx.clip();
+  const sy=y+scanLineY*h;
+  ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(x,sy-2,w,4);
+  ctx.strokeStyle='rgba(0,0,0,0.92)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(x,sy); ctx.lineTo(x+w,sy); ctx.stroke();
+  ctx.restore();
+}
+
+// crying square: thin closed line
+function drawCrySquareEye(x,y,w,h){ rRect(x,y+h*0.46,w,3,2,T.color); }
+
+// sleeping: flat line
+function drawSleepEye(x,y,w,h){ rRect(x,y+h/2-1,w,3,2,T.color); }
+
+// ════════════════════════════════════════════
+//  EYEBROWS (square mode — fixed, no cursor shift)
+// ════════════════════════════════════════════
+function drawEyebrow(x,y,w,type,color){
+  ctx.save(); ctx.strokeStyle=color; ctx.lineCap='round'; ctx.lineJoin='round';
+  const bx=x+w*0.08, bw=w*0.84, by=y-11;
   ctx.beginPath();
   switch(type){
-    // Flat neutral
-    case'neutral': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by); break;
-    // Angry: left brow — high outer, low inner (slopes down inward)
-    case'angry_l': ctx.lineWidth=3.5; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+5); break;
-    // Angry: right brow — low inner, high outer
-    case'angry_r': ctx.lineWidth=3.5; ctx.moveTo(bx,by+5); ctx.lineTo(bx+bw,by-4); break;
-    // Sad: left brow — low outer, raised inner
-    case'sad_l': ctx.lineWidth=3; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by-3); break;
-    // Sad: right brow — raised inner, low outer
-    case'sad_r': ctx.lineWidth=3; ctx.moveTo(bx,by-3); ctx.lineTo(bx+bw,by+3); break;
-    // Surprised: arched high
-    case'surprised':
-      ctx.lineWidth=3;
-      ctx.arc(bx+bw/2, by+12, bw/2, Math.PI*1.15, Math.PI*1.85, false);
-      break;
-    // Worried/nervous: inner corners raised like /\ shape
-    case'worried_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
-    case'worried_r': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
-    // Confused: left=sad, right=raised
-    case'confused_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by-4); break;
-    case'confused_r': ctx.lineWidth=3; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+2); break;
-    // Happy: gentle upward curve
-    case'happy':
-      ctx.lineWidth=3;
-      ctx.moveTo(bx,by+1);
-      ctx.quadraticCurveTo(bx+bw*0.5,by-4,bx+bw,by+1);
-      break;
-    // Excited: high arch
-    case'excited':
-      ctx.lineWidth=3.5;
-      ctx.arc(bx+bw/2,by+14,bw/2,Math.PI*1.1,Math.PI*1.9,false);
-      break;
-    // Cool: one brow flat low (relaxed)
-    case'cool': ctx.lineWidth=3; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by+3); break;
-    // Wink side: slight raise
-    case'wink': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.5,by-5,bx+bw,by); break;
-    // Unamused: flat with slight droop
-    case'unamused': ctx.lineWidth=3; ctx.moveTo(bx,by+4); ctx.lineTo(bx+bw,by+4); break;
-    // Pleading: strong inner raise
-    case'pleading_l': ctx.lineWidth=3; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.4,by-8,bx+bw,by); break;
-    case'pleading_r': ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.6,by-8,bx+bw,by+4); break;
-    // Thinking: one side angled
-    case'thinking_l': ctx.lineWidth=3; ctx.moveTo(bx,by+1); ctx.lineTo(bx+bw,by-3); break;
-    case'thinking_r': ctx.lineWidth=3; ctx.moveTo(bx,by-3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by-3); break;
-    // Sarcastic: one flat, one raised corner
-    case'sarc_l': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by+2); break;
-    case'sarc_r': ctx.lineWidth=3; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw*0.6,by+2); ctx.lineTo(bx+bw,by-4); break;
-    // Crying: heavy sad droop
-    case'cry_l': ctx.lineWidth=3.5; ctx.moveTo(bx,by+1); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+3); break;
-    case'cry_r': ctx.lineWidth=3.5; ctx.moveTo(bx,by+3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+1); break;
-    // Hit/ouch: strong furrowed squeeze
-    case'ouch_l': ctx.lineWidth=4; ctx.moveTo(bx,by-2); ctx.quadraticCurveTo(bx+bw*0.5,by+6,bx+bw,by+4); break;
-    case'ouch_r': ctx.lineWidth=4; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.5,by+6,bx+bw,by-2); break;
-    default: ctx.lineWidth=3; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by); break;
+    case 'neutral':    ctx.lineWidth=2.8; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by); break;
+    case 'angry_l':    ctx.lineWidth=3.2; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+5); break;
+    case 'angry_r':    ctx.lineWidth=3.2; ctx.moveTo(bx,by+5); ctx.lineTo(bx+bw,by-4); break;
+    case 'sad_l':      ctx.lineWidth=2.8; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by-3); break;
+    case 'sad_r':      ctx.lineWidth=2.8; ctx.moveTo(bx,by-3); ctx.lineTo(bx+bw,by+3); break;
+    case 'surprised':  ctx.lineWidth=2.8; ctx.arc(bx+bw/2,by+12,bw/2,Math.PI*1.15,Math.PI*1.85,false); break;
+    case 'worried_l':  ctx.lineWidth=2.8; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
+    case 'worried_r':  ctx.lineWidth=2.8; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by-7,bx+bw,by+2); break;
+    case 'happy':      ctx.lineWidth=2.8; ctx.moveTo(bx,by+1); ctx.quadraticCurveTo(bx+bw*0.5,by-4,bx+bw,by+1); break;
+    case 'excited':    ctx.lineWidth=3.0; ctx.arc(bx+bw/2,by+14,bw/2,Math.PI*1.1,Math.PI*1.9,false); break;
+    case 'cool':       ctx.lineWidth=2.8; ctx.moveTo(bx,by+3); ctx.lineTo(bx+bw,by+3); break;
+    case 'unamused_l': ctx.lineWidth=2.8; ctx.moveTo(bx,by+1); ctx.lineTo(bx+bw*0.5,by+5); ctx.lineTo(bx+bw,by+1); break;
+    case 'unamused_r': ctx.lineWidth=2.8; ctx.moveTo(bx,by+1); ctx.lineTo(bx+bw*0.5,by+5); ctx.lineTo(bx+bw,by+1); break;
+    case 'thinking_l': ctx.lineWidth=2.8; ctx.moveTo(bx,by+1); ctx.lineTo(bx+bw,by-3); break;
+    case 'thinking_r': ctx.lineWidth=2.8; ctx.moveTo(bx,by-3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by-3); break;
+    case 'confused_l': ctx.lineWidth=2.8; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by-4); break;
+    case 'confused_r': ctx.lineWidth=2.8; ctx.moveTo(bx,by-4); ctx.lineTo(bx+bw,by+2); break;
+    case 'cry_l':      ctx.lineWidth=3.0; ctx.moveTo(bx,by+1); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+3); break;
+    case 'cry_r':      ctx.lineWidth=3.0; ctx.moveTo(bx,by+3); ctx.quadraticCurveTo(bx+bw*0.5,by-6,bx+bw,by+1); break;
+    case 'pleading_l': ctx.lineWidth=2.8; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.4,by-8,bx+bw,by); break;
+    case 'pleading_r': ctx.lineWidth=2.8; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.6,by-8,bx+bw,by+4); break;
+    case 'sarc_l':     ctx.lineWidth=2.8; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw,by+2); break;
+    case 'sarc_r':     ctx.lineWidth=2.8; ctx.moveTo(bx,by+2); ctx.lineTo(bx+bw*0.6,by+2); ctx.lineTo(bx+bw,by-4); break;
+    case 'wink':       ctx.lineWidth=2.8; ctx.moveTo(bx,by); ctx.quadraticCurveTo(bx+bw*0.5,by-5,bx+bw,by); break;
+    case 'pain_l':     ctx.lineWidth=3.5; ctx.moveTo(bx,by+4); ctx.quadraticCurveTo(bx+bw*0.5,by+10,bx+bw,by+6); break;
+    case 'pain_r':     ctx.lineWidth=3.5; ctx.moveTo(bx,by+6); ctx.quadraticCurveTo(bx+bw*0.5,by+10,bx+bw,by+4); break;
+    case 'chill_l':    ctx.lineWidth=2.5; ctx.moveTo(bx,by+1); ctx.quadraticCurveTo(bx+bw*0.5,by+4,bx+bw,by+2); break;
+    case 'chill_r':    ctx.lineWidth=2.5; ctx.moveTo(bx,by+2); ctx.quadraticCurveTo(bx+bw*0.5,by+4,bx+bw,by+1); break;
+    default:           ctx.lineWidth=2.8; ctx.moveTo(bx,by); ctx.lineTo(bx+bw,by);
   }
-  ctx.stroke();
-  ctx.restore();
+  ctx.stroke(); ctx.restore();
 }
 
-// ── Eyebrow dispatcher for square mode — maps emotion to brow types ──
-function drawSquareEyebrows(ts){
-  if(eyeStyle!=='square') return;
-  let lType='neutral', rType='neutral';
-  switch(currentEmotion){
-    case'angry':     lType='angry_l';   rType='angry_r';   break;
-    case'frustrated':lType='angry_l';   rType='angry_r';   break;
-    case'sad':       lType='sad_l';     rType='sad_r';     break;
-    case'crying':    lType='cry_l';     rType='cry_r';     break;
-    case'surprised': lType='surprised'; rType='surprised'; break;
-    case'speechless':lType='surprised'; rType='surprised'; break;
-    case'nervous':   lType='worried_l'; rType='worried_r'; break;
-    case'confused':  lType='confused_l';rType='confused_r';break;
-    case'thinking':  lType='thinking_l';rType='thinking_r';break;
-    case'happy':     lType='happy';     rType='happy';     break;
-    case'love':      lType='happy';     rType='happy';     break;
-    case'blush':     lType='happy';     rType='happy';     break;
-    case'excited':   lType='excited';   rType='excited';   break;
-    case'laugh':     lType='excited';   rType='excited';   break;
-    case'cool':      lType='cool';      rType='cool';      break;
-    case'chilling':  lType='cool';      rType='cool';      break;
-    case'wink':      lType='wink';      rType='neutral';   break;
-    case'unamused':  lType='unamused';  rType='unamused';  break;
-    case'sarcastic': lType='sarc_l';    rType='sarc_r';    break;
-    case'pleading':  lType='pleading_l';rType='pleading_r';break;
-    case'ouch':      lType='ouch_l';    rType='ouch_r';    break;
-    case'hurt':      lType='ouch_l';    rType='ouch_r';    break;
-    case'alert':     lType='surprised'; rType='surprised'; break;
-    case'curious':   lType='neutral';   rType='excited';   break;
-    case'music':     lType='happy';     rType='happy';     break;
-    case'working':   lType='thinking_l';rType='thinking_l';break;
-    case'sleepy':    lType='sad_l';     rType='sad_r';     break;
-  }
-  const col=E.color+'dd';
-  // Apply socket offset in square mode
-  const lx=E.lxC+ES.xC, ly=E.lyC+ES.yC;
-  const rx=E.rxC+ES.xC, ry=E.ryC+ES.yC;
-  drawEyebrow(lx,ly,E.lwC,lType,col,ts);
-  drawEyebrow(rx,ry,E.rwC,rType,col,ts);
-}
-
-// ── Dizzy spiral inside eye ──
-function drawDizzyEye(x,y,w,h,br){
-  // Draw eye base
-  rRect(x,y,w,h,br,E.color);
-  // Draw X marks inside — like 😵
+// ════════════════════════════════════════════
+//  GLASSES & BLUSH
+// ════════════════════════════════════════════
+function drawGlasses(){
+  const sx = eyeStyle==='square' ? C.esxC : 0;
+  const sy = eyeStyle==='square' ? C.esyC : 0;
+  const lx=C.lx+sx, rx=C.rx+sx, ly=C.ly+sy;
+  const lw=C.lw, rw=C.rw, lh=C.lhC;
+  const gt=ly+lh*0.42, gh=lh*0.70;
   ctx.save();
-  ctx.globalCompositeOperation='destination-out';
-  ctx.strokeStyle='#000';ctx.lineWidth=Math.min(w,h)*0.18;ctx.lineCap='round';
-  const cx2=x+w*0.5,cy2=y+h*0.5,s=Math.min(w,h)*0.28;
-  ctx.beginPath();ctx.moveTo(cx2-s,cy2-s);ctx.lineTo(cx2+s,cy2+s);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx2+s,cy2-s);ctx.lineTo(cx2-s,cy2+s);ctx.stroke();
+  rRect(lx-2,gt,lw+4,gh,6,'rgba(0,0,0,0.90)');
+  rRect(rx-2,gt,rw+4,gh,6,'rgba(0,0,0,0.90)');
+  rRect(lx-2,gt,lw+4,gh,6,null,'#1a1a1a',2.5);
+  rRect(rx-2,gt,rw+4,gh,6,null,'#1a1a1a',2.5);
+  const bY=gt+gh*0.28;
+  ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(lx+lw+2,bY); ctx.lineTo(rx-2,bY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(lx-2,bY); ctx.lineTo(lx-18,bY+5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rx+rw+2,bY); ctx.lineTo(rx+rw+18,bY+5); ctx.stroke();
+  ctx.globalAlpha=0.10; ctx.fillStyle='#fff';
+  rRect(lx+1,gt+2,lw*0.45,gh*0.28,3,'#fff');
+  rRect(rx+1,gt+2,rw*0.45,gh*0.28,3,'#fff');
   ctx.restore();
 }
 
-// ── Scanning beam per eye ──
-let scanLineY=0; // normalized 0-1 position
-function drawScanBeam(x,y,w,h,br,ts){
-  // Draw eye base
-  rRect(x,y,w,h,br,E.color);
-  // Clip to eye bounds and draw scan line
-  ctx.save();
-  ctx.beginPath();
-  // clip path = eye shape
-  const r2=Math.max(0,Math.min(br,w/2,h/2));
-  ctx.moveTo(x+r2,y);ctx.lineTo(x+w-r2,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r2);
-  ctx.lineTo(x+w,y+h-r2);ctx.quadraticCurveTo(x+w,y+h,x+w-r2,y+h);
-  ctx.lineTo(x+r2,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r2);
-  ctx.lineTo(x,y+r2);ctx.quadraticCurveTo(x,y,x+r2,y);
-  ctx.closePath();ctx.clip();
-  // Scan line
-  const sy=y+scanLineY*h;
-  // Glow line
-  const grad=ctx.createLinearGradient(x,sy-4,x,sy+4);
-  grad.addColorStop(0,'rgba(0,0,0,0)');
-  grad.addColorStop(0.5,'rgba(0,0,0,0.7)');
-  grad.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=grad;ctx.fillRect(x,sy-4,w,8);
-  // Bright center line
-  ctx.strokeStyle='rgba(0,0,0,0.9)';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(x,sy);ctx.lineTo(x+w,sy);ctx.stroke();
+function drawBlush(){
+  ctx.save(); ctx.globalAlpha=0.28; ctx.fillStyle='#f472b6';
+  ctx.beginPath(); ctx.ellipse(C.lx+C.lw*0.5,C.ly+C.lhC*0.88,C.lw*0.36,C.lhC*0.2,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(C.rx+C.rw*0.5,C.ry+C.rhC*0.88,C.rw*0.36,C.rhC*0.2,0,0,Math.PI*2); ctx.fill();
   ctx.restore();
 }
 
-// ── Square-mode eye-socket shift (cursor tracking for no-pupil mode) ──
-const ES={xC:0,yC:0,xT:0,yT:0};
-const ES_MAX=5;
-function interpEyeSocket(){
-  ES.xC=lp(ES.xC,ES.xT,0.14);
-  ES.yC=lp(ES.yC,ES.yT,0.14);
+// ════════════════════════════════════════════
+//  PARTICLES
+// ════════════════════════════════════════════
+function spawnTears(continuous){
+  if(currentEmotion!=='crying'&&currentEmotion!=='sad') return;
+  for(let i=0;i<2;i++) tearDrops.push({x:T.lx+EYE_W*(0.25+Math.random()*0.45),y:T.ly+EYE_H*0.62,vy:1+Math.random()*0.6,r:2.1+Math.random()*1.2,life:90,maxLife:90,type:'tear'});
+  for(let i=0;i<2;i++) tearDrops.push({x:T.rx+EYE_W*(0.25+Math.random()*0.45),y:T.ry+EYE_H*0.62,vy:1+Math.random()*0.6,r:2.1+Math.random()*1.2,life:90,maxLife:90,type:'tear'});
+  if(continuous) setTimeout(()=>spawnTears(true),320);
 }
 
-function drawEye(x,y,w,h,br,tiredH,angryH,happyOff,pxR,pyR,pSize,isLeft){
-  // In square mode, shift entire eye rect by socket offset
-  if(eyeStyle==='square'){x+=ES.xC;y+=ES.yC;}
-  rRect(x,y,w,h,br,E.color);
-  if(tiredH>0.5){
-    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.beginPath();
-    if(isLeft){ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x,y+tiredH-1);}
-    else{ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x+w,y+tiredH-1);}
-    ctx.closePath();ctx.fillStyle='#000';ctx.fill();ctx.restore();
+function tickParticles(ts){
+  heartParticles.forEach(p=>{p.y-=p.vy;p.x+=p.vx;p.life--;});
+  heartParticles=heartParticles.filter(p=>p.life>0);
+  tearDrops.forEach(d=>{d.y+=d.vy;d.life--;});
+  tearDrops=tearDrops.filter(d=>d.life>0);
+  zzzParticles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life--;});
+  zzzParticles=zzzParticles.filter(p=>p.life>0);
+  musicNotes.forEach(n=>{n.y-=n.vy;n.x+=n.vx;n.life--;});
+  musicNotes=musicNotes.filter(n=>n.life>0);
+  if(musicMode&&currentEmotion==='music'&&ts-musicTimer>480){
+    musicTimer=ts;
+    const NOTE_CHARS=['♩','♪','♫','♬'];
+    musicNotes.push({x:EYE_LX+Math.random()*(EYE_RX+EYE_W-EYE_LX),y:EYE_Y+EYE_H/2,ch:NOTE_CHARS[Math.floor(Math.random()*4)],vx:(Math.random()-0.5)*0.6,vy:1+Math.random()*0.8,size:10+Math.random()*8,life:70,maxLife:70});
   }
-  if(angryH>0.5){
-    ctx.save();ctx.globalCompositeOperation='destination-out';ctx.beginPath();
-    if(isLeft){ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x+w,y+angryH-1);}
-    else{ctx.moveTo(x,y-1);ctx.lineTo(x+w,y-1);ctx.lineTo(x,y+angryH-1);}
-    ctx.closePath();ctx.fillStyle='#000';ctx.fill();ctx.restore();
-  }
-  if(happyOff>0.5){
-    ctx.save();ctx.globalCompositeOperation='destination-out';
-    rRect(x-1,(y+h)-happyOff+1,w+2,h+4,br,'#000');ctx.restore();
-  }
-  // Pupils: only in pupils mode — square mode has NO pupil at all
-  if(eyeStyle==='pupils'){
-    if(E.heartPupils){
-      drawHeart(x+w*pxR,y+h*pyR,Math.min(w,h)*pSize*1.2,E.pupilColor);
-    } else {
-      const pr=Math.min(w,h)*pSize;
-      ctx.beginPath();ctx.arc(x+w*pxR,y+h*pyR,pr,0,Math.PI*2);ctx.fillStyle=E.pupilColor;ctx.fill();
-      ctx.beginPath();ctx.arc(x+w*pxR-pr*0.28,y+h*pyR-pr*0.28,pr*0.22,0,Math.PI*2);ctx.fillStyle=E.glintColor;ctx.fill();
-    }
-  }
-  // Square mode: no pupil drawn at all — eye socket shift handles tracking
 }
 
-// ── Headphones drawing ──
-// Drawn above/around eyes when listening expression is active
-function drawHeadphones(lx,ly,lw,rx,rw,eyeH){
-  const col=E.color;
-  const lCx=lx+lw/2, rCx=rx+rw/2;
-  const eyeMidY=ly+eyeH/2;
-  const earR=14;
-  // Ear cups sit beside the eyes (left of left eye, right of right eye)
-  const lEarX=lx-earR-4, rEarX=rx+rw+earR+4;
-  const earCupY=eyeMidY;
-  ctx.save();ctx.strokeStyle=col;ctx.lineWidth=3;ctx.lineCap='round';
-  // Left ear cup (open on right side toward eye)
-  ctx.beginPath();ctx.arc(lEarX,earCupY,earR,Math.PI*0.35,Math.PI*1.65);ctx.stroke();
-  // Right ear cup (open on left side toward eye)
-  ctx.beginPath();ctx.arc(rEarX,earCupY,earR,-Math.PI*0.65,Math.PI*0.65);ctx.stroke();
-  // Headband — arc over the top connecting both ear cups
-  const bandCX=CX, bandCY=ly-8;
-  const bandR=rEarX-CX;
-  ctx.lineWidth=2.5;ctx.beginPath();
-  ctx.arc(bandCX,bandCY+bandR*0.55,bandR,Math.PI,0,false);ctx.stroke();
-  // Soft fill on ear cups
-  ctx.globalAlpha=0.15;ctx.fillStyle=col;
-  ctx.beginPath();ctx.arc(lEarX,earCupY,earR,Math.PI*0.35,Math.PI*1.65);
-  ctx.lineTo(lEarX,earCupY);ctx.closePath();ctx.fill();
-  ctx.beginPath();ctx.arc(rEarX,earCupY,earR,-Math.PI*0.65,Math.PI*0.65);
-  ctx.lineTo(rEarX,earCupY);ctx.closePath();ctx.fill();
-  ctx.restore();
-}
-
-// ── Sleep ZZZ particles ──
-let zzzParticles=[];
-function spawnZzz(){
-  zzzParticles.push({
-    x:EYE_RX+EYE_W*0.8+Math.random()*20,
-    y:EYE_Y-5+Math.random()*10,
-    vx:0.4+Math.random()*0.3,vy:-0.5-Math.random()*0.4,
-    size:8+Math.random()*8,life:100,maxLife:100,alpha:1
+function drawParticles(){
+  heartParticles.forEach(p=>{
+    if(p.life<=0) return;
+    ctx.save(); ctx.globalAlpha=p.life/p.maxLife; drawHeart(p.x,p.y,p.size,'#f472b6'); ctx.restore();
+  });
+  tearDrops.forEach(d=>{
+    if(d.life<=0) return;
+    ctx.save(); ctx.globalAlpha=(d.life/d.maxLife)*0.88;
+    if(d.type==='teardrop'){ drawTeardrop(d.x,d.y,d.r,d.life/d.maxLife); }
+    else{ ctx.fillStyle=d.type==='sweat'?'rgba(200,230,255,0.75)':'rgba(96,165,250,0.85)'; ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  });
+  zzzParticles.forEach(p=>{
+    if(p.life<=0) return;
+    ctx.save(); ctx.globalAlpha=p.life/p.maxLife; ctx.fillStyle=T.color;
+    ctx.font=`bold ${p.size}px "Space Grotesk",sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('z',p.x,p.y); ctx.restore();
+  });
+  musicNotes.forEach(n=>{
+    if(n.life<=0) return;
+    ctx.save(); ctx.globalAlpha=n.life/n.maxLife; ctx.fillStyle='#fbbf24';
+    ctx.font=`${n.size}px "Space Grotesk",sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(n.ch,n.x,n.y); ctx.restore();
   });
 }
 
-// ── Music note particles ──
-let musicNotes=[];
-const NOTE_CHARS=['♩','♪','♫','♬'];
-let musicPlaying=false;
-let musicNoteTimer=0;
+// ════════════════════════════════════════════
+//  RESET
+// ════════════════════════════════════════════
+function resetEyeTargets(){
+  const br=getBR();
+  T.lx=EYE_LX; T.ly=EYE_Y; T.lw=EYE_W; T.lh=EYE_H; T.lbr=br;
+  T.rx=EYE_RX; T.ry=EYE_Y; T.rw=EYE_W; T.rh=EYE_H; T.rbr=br;
+  T.tiredH=0; T.angryH=0; T.happyOff=0;
+  T.pupilX=0.5; T.pupilY=0.5; T.pupilSize=0.36;
+  T.heartPupils=false; T.sleepMode=false; T.blushMode=false; T.chillingMode=false;
+  T.batteryMode=false; T.clockMode=false; T.questionMode=false;
+  T.esxT=0; T.esyT=0;
+  browL='neutral'; browR='neutral';
+  musicMode=false;
+}
 
-// ── Hit reactions ──
-let hitCount=0,hitTimer=null;
-document.getElementById('vegaFaceWrap').addEventListener('click',e=>{
+// ════════════════════════════════════════════
+//  BLINK
+// ════════════════════════════════════════════
+const NO_BLINK_EMOTIONS = new Set(['cool','unamused','sleeping','ouch','hurt','chilling','awkward','dizzy','working']);
+
+function doBlink(){
+  if(isBlinking||T.sleepMode||T.chillingMode) return;
+  if(NO_BLINK_EMOTIONS.has(currentEmotion)) return;
+  isBlinking=true;
+  const oL=T.lh, oR=T.rh;
+  T.lh=1; T.rh=1;
+  setTimeout(()=>{ T.lh=oL; T.rh=oR; isBlinking=false; },180);
+}
+
+// ════════════════════════════════════════════
+//  HIT SYSTEM
+//  1 hit  → ouch → recover
+//  2 hits → ouch → hurt → recover
+//  3 hits → ouch → hurt → crying + chat context
+// ════════════════════════════════════════════
+let hitCount=0, hitTimer=null;
+let preHitEmotion='neutral';
+
+document.getElementById('vegaFaceWrap').addEventListener('click', e=>{
   if(currentEmotion==='sleeping'||currentEmotion==='sleepy') return;
-  hitCount++;
   clearTimeout(hitTimer);
+  hitCount++;
+
   if(hitCount===1){
-    setEmotion('ouch');
-    hitTimer=setTimeout(()=>{if(hitCount<2){hitCount=0;setEmotion('neutral');}},1200);
+    setEmotion('ouch',true);
+    hitTimer=setTimeout(()=>{ if(hitCount===1){ hitCount=0; setEmotion(preHitEmotion); } },1100);
+
   } else if(hitCount===2){
-    setEmotion('hurt');
-    hitTimer=setTimeout(()=>{if(hitCount<3){hitCount=0;setEmotion('sad');}},1500);
+    setEmotion('ouch',true);
+    hitTimer=setTimeout(()=>{
+      setEmotion('hurt',true);
+      hitTimer=setTimeout(()=>{ if(hitCount===2){ hitCount=0; setEmotion(preHitEmotion); } },2000);
+    },600);
+
   } else {
-    setEmotion('crying');
     hitCount=0;
-    hitTimer=setTimeout(()=>setEmotion('sad'),4000);
+    setEmotion('ouch',true);
+    setTimeout(()=>setEmotion('hurt',true),600);
+    setTimeout(()=>{ setEmotion('crying'); preHitEmotion='sad'; },1400);
+    setTimeout(()=>{ if(currentEmotion==='crying') setEmotion('sad'); },5500);
+    // push context so model knows what happened
+    setTimeout(()=>{
+      if(typeof chatHistory!=='undefined'){
+        chatHistory.push({role:'user',content:'[Vinay hit Vega face 3 times]'});
+        chatHistory.push({role:'assistant',content:'Ow! That hurt, sir. Why are you hitting me? [EMOTION:crying]'});
+        if(typeof addMessage==='function') addMessage('vega','Ow! That hurt, sir. Why are you hitting me?');
+        if(typeof speak==='function') speak('Ow! That hurt, sir. Why are you hitting me?');
+        if(typeof saveCurrentChat==='function') saveCurrentChat();
+      }
+    },1500);
   }
   e.stopPropagation();
 });
 
-// ── Moods where cursor should NOT be followed ──────────────────────────────
-const NO_CURSOR_MOODS=new Set(['sad','crying','hurt','music','sleeping','unamused','dizzy']);
+// ════════════════════════════════════════════
+//  EYE STYLE TOGGLE
+// ════════════════════════════════════════════
+function toggleEyeStyle(){
+  eyeStyle = eyeStyle==='pupils' ? 'square' : 'pupils';
+  const br=getBR(); T.lbr=C.lbr=br; T.rbr=C.rbr=br;
+  const btn=document.getElementById('eyeStyleBtn');
+  if(btn){ btn.textContent=eyeStyle==='pupils'?'Pupils':'Square'; btn.classList.toggle('active',eyeStyle==='pupils'); }
+  showToast(eyeStyle==='pupils'?'Eyes: Pupils':'Eyes: Square');
+}
 
-// ── Cursor spin detection for dizzy ────────────────────────────────────────
-let cursorHistory=[];
-let dizzyTimer=null;
-let cursorIdleTimer=null;
-let cursorIsIdle=false;
-const CURSOR_IDLE_MS=5000; // 5s no movement → stop following
+// ════════════════════════════════════════════
+//  CURSOR TRACKING + DIZZY SPIN
+// ════════════════════════════════════════════
+let _cursorHistory=[], _cursorStopTimer=null;
+let cursorIsIdle=false, cursorIdleTimer=null;
+const CURSOR_IDLE_MS=5000;
 
-// ── Idle eye behavior ───────────────────────────────────────────────────────
+function _checkCursorSpin(x,y){
+  const now=Date.now();
+  _cursorHistory.push({x,y,ts:now});
+  _cursorHistory=_cursorHistory.filter(p=>now-p.ts<2000);
+  if(_cursorHistory.length<20) return;
+  const cx=_cursorHistory.reduce((s,p)=>s+p.x,0)/_cursorHistory.length;
+  const cy=_cursorHistory.reduce((s,p)=>s+p.y,0)/_cursorHistory.length;
+  let totalAngle=0;
+  for(let i=1;i<_cursorHistory.length;i++){
+    const a1=Math.atan2(_cursorHistory[i-1].y-cy,_cursorHistory[i-1].x-cx);
+    const a2=Math.atan2(_cursorHistory[i].y-cy,_cursorHistory[i].x-cx);
+    let da=a2-a1;
+    if(da>Math.PI) da-=2*Math.PI;
+    if(da<-Math.PI) da+=2*Math.PI;
+    totalAngle+=Math.abs(da);
+  }
+  if(totalAngle>4*Math.PI&&currentEmotion!=='dizzy'){
+    _cursorHistory=[];
+    setEmotion('dizzy');
+    // push context so model knows
+    if(typeof chatHistory!=='undefined'){
+      chatHistory.push({role:'user',content:'[Vinay spun the cursor in circles around Vega face]'});
+      chatHistory.push({role:'assistant',content:'Whoa... everything is spinning, sir. Stop that! [EMOTION:dizzy]'});
+      if(typeof addMessage==='function') addMessage('vega','Whoa... everything is spinning, sir. Stop that!');
+      if(typeof speak==='function') speak('Whoa... everything is spinning, sir. Stop that!');
+      if(typeof saveCurrentChat==='function') saveCurrentChat();
+    }
+  }
+}
+
+// ── Idle eye behavior ──
 const IDLE_EYE_MOVES=[
-  // Look left
-  ()=>{E.pupilX=0.12;E.pupilY=0.5;},
-  // Look right
-  ()=>{E.pupilX=0.88;E.pupilY=0.5;},
-  // Look up
-  ()=>{E.pupilX=0.5;E.pupilY=0.15;},
-  // Look top-left
-  ()=>{E.pupilX=0.18;E.pupilY=0.2;},
-  // Look top-right
-  ()=>{E.pupilX=0.82;E.pupilY=0.2;},
-  // Center
-  ()=>{E.pupilX=0.5;E.pupilY=0.5;},
-  // Slow blink (yawn-like)
-  ()=>{doBlink();setTimeout(doBlink,400);},
+  ()=>{T.pupilX=0.12;T.pupilY=0.5;T.esxT=-ES_MAX*0.7;T.esyT=0;},
+  ()=>{T.pupilX=0.88;T.pupilY=0.5;T.esxT=ES_MAX*0.7;T.esyT=0;},
+  ()=>{T.pupilX=0.5;T.pupilY=0.15;T.esxT=0;T.esyT=-ES_MAX*0.5;},
+  ()=>{T.pupilX=0.18;T.pupilY=0.2;T.esxT=-ES_MAX*0.5;T.esyT=-ES_MAX*0.35;},
+  ()=>{T.pupilX=0.82;T.pupilY=0.2;T.esxT=ES_MAX*0.5;T.esyT=-ES_MAX*0.35;},
+  ()=>{T.pupilX=0.5;T.pupilY=0.5;T.esxT=0;T.esyT=0;},
+  ()=>{doBlink();},
+  ()=>{doBlink();setTimeout(doBlink,280);},
 ];
 let idleEyeTimer=null;
-let idleEyeIdx=0;
 
 function startIdleEyeBehavior(){
   if(idleEyeTimer) return;
-  function doIdleMove(){
-    if(!cursorIsIdle||NO_CURSOR_MOODS.has(currentEmotion)||currentEmotion==='sleeping'){
-      idleEyeTimer=null;return;
-    }
-    const move=IDLE_EYE_MOVES[Math.floor(Math.random()*IDLE_EYE_MOVES.length)];
-    move();
-    idleEyeTimer=setTimeout(doIdleMove,1800+Math.random()*2500);
+  function doMove(){
+    if(!cursorIsIdle||NO_CURSOR_MOODS.has(currentEmotion)||currentEmotion==='sleeping'){idleEyeTimer=null;return;}
+    IDLE_EYE_MOVES[Math.floor(Math.random()*IDLE_EYE_MOVES.length)]();
+    idleEyeTimer=setTimeout(doMove,1400+Math.random()*2200);
   }
-  idleEyeTimer=setTimeout(doIdleMove,1200);
+  idleEyeTimer=setTimeout(doMove,1000);
 }
-
 function stopIdleEyeBehavior(){
-  clearTimeout(idleEyeTimer);idleEyeTimer=null;
-  // Return to center
-  E.pupilX=0.5;E.pupilY=0.5;
+  clearTimeout(idleEyeTimer); idleEyeTimer=null;
+  T.pupilX=0.5; T.pupilY=0.5; T.esxT=0; T.esyT=0;
 }
 
-// ── Check for cursor spinning (dizzy detection) ─────────────────────────────
-function checkCursorSpin(x,y,ts){
-  cursorHistory.push({x,y,ts});
-  // Keep last 2 seconds
-  cursorHistory=cursorHistory.filter(p=>ts-p.ts<2000);
-  if(cursorHistory.length<20) return;
-  // Calculate total angle swept
-  let totalAngle=0;
-  const cx_avg=cursorHistory.reduce((s,p)=>s+p.x,0)/cursorHistory.length;
-  const cy_avg=cursorHistory.reduce((s,p)=>s+p.y,0)/cursorHistory.length;
-  for(let i=1;i<cursorHistory.length;i++){
-    const a1=Math.atan2(cursorHistory[i-1].y-cy_avg,cursorHistory[i-1].x-cx_avg);
-    const a2=Math.atan2(cursorHistory[i].y-cy_avg,cursorHistory[i].x-cx_avg);
-    let da=a2-a1;
-    if(da>Math.PI)da-=2*Math.PI;
-    if(da<-Math.PI)da+=2*Math.PI;
-    totalAngle+=Math.abs(da);
-  }
-  // If swept > 4π (2 full circles) in 2 seconds → dizzy
-  if(totalAngle>4*Math.PI&&currentEmotion!=='dizzy'){
-    setEmotion('dizzy');cursorHistory=[];
-  }
-}
-
-// ── Mouse tracking ──────────────────────────────────────────────────────────
-let mouseInWindow=true,mouseX=window.innerWidth/2,mouseY=window.innerHeight/2;
-let lastMouseMoveTs=Date.now();
-
+let mouseInWindow=true;
 document.addEventListener('mousemove',e=>{
-  mouseX=e.clientX;mouseY=e.clientY;mouseInWindow=true;
-  lastActivityTime=Date.now();lastMouseMoveTs=Date.now();
+  mouseInWindow=true;
+  lastActivityTime=Date.now();
 
-  // Was idle → resume cursor following
-  if(cursorIsIdle){
-    cursorIsIdle=false;
-    stopIdleEyeBehavior();
-  }
-
-  // Reset cursor idle timer
+  if(cursorIsIdle){ cursorIsIdle=false; stopIdleEyeBehavior(); }
   clearTimeout(cursorIdleTimer);
-  cursorIdleTimer=setTimeout(()=>{
-    cursorIsIdle=true;
-    startIdleEyeBehavior();
-  },CURSOR_IDLE_MS);
+  cursorIdleTimer=setTimeout(()=>{ cursorIsIdle=true; startIdleEyeBehavior(); },CURSOR_IDLE_MS);
 
-  // Don't track cursor for restricted moods
-  if(NO_CURSOR_MOODS.has(currentEmotion)) return;
-  if(currentEmotion==='sleeping') return;
-  if(E.questionMode||E.batteryMode||E.clockMode) return;
+  if(NO_CURSOR_MOODS.has(currentEmotion)||currentEmotion==='sleeping'||T.sleepMode) return;
 
-  const rect=canvas.getBoundingClientRect();
-  if(!rect.width) return;
-  const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
-  const dx=mouseX-cx,dy=mouseY-cy,maxD=Math.max(rect.width,200);
+  const rect=canvas.getBoundingClientRect(); if(!rect.width) return;
+  const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+  const dx=e.clientX-cx, dy=e.clientY-cy;
+  const maxD=Math.max(rect.width,200);
 
   if(eyeStyle==='pupils'){
-    E.pupilX=0.5+Math.max(-1,Math.min(1,dx/maxD))*0.26;
-    E.pupilY=0.5+Math.max(-1,Math.min(1,dy/maxD))*0.20;
+    T.pupilX=0.5+Math.max(-1,Math.min(1,dx/maxD))*0.26;
+    T.pupilY=0.5+Math.max(-1,Math.min(1,dy/maxD))*0.20;
   } else {
-    ES.xT=Math.max(-ES_MAX,Math.min(ES_MAX,(dx/maxD)*ES_MAX));
-    ES.yT=Math.max(-ES_MAX,Math.min(ES_MAX,(dy/maxD)*ES_MAX));
+    T.esxT=Math.max(-ES_MAX,Math.min(ES_MAX,(dx/maxD)*ES_MAX));
+    T.esyT=Math.max(-ES_MAX*0.7,Math.min(ES_MAX*0.7,(dy/maxD)*ES_MAX*0.7));
   }
-
-  // Check for dizzy spin
-  checkCursorSpin(mouseX,mouseY,Date.now());
+  _checkCursorSpin(e.clientX,e.clientY);
 });
 
 document.addEventListener('mouseleave',()=>{
   mouseInWindow=false;
-  E.pupilX=0.5;E.pupilY=0.5;
-  ES.xT=0;ES.yT=0;
-  cursorIsIdle=true;
-  startIdleEyeBehavior();
+  T.pupilX=0.5; T.pupilY=0.5; T.esxT=0; T.esyT=0;
+  cursorIsIdle=true; startIdleEyeBehavior();
 });
-document.addEventListener('mouseenter',()=>{
-  mouseInWindow=true;cursorIsIdle=false;stopIdleEyeBehavior();
-});
-canvas.addEventListener('mouseenter',()=>{if(E.clockMode)E.clockHover=true;});
-canvas.addEventListener('mouseleave',()=>{E.clockHover=false;});
+document.addEventListener('mouseenter',()=>{ mouseInWindow=true; cursorIsIdle=false; stopIdleEyeBehavior(); });
+canvas.addEventListener('mouseenter',()=>{ if(E&&T.clockMode) T.clockMode=true; });
 
-// ── Draw frame ──
-let lastBlink=0,nextBlink=3000;
-let heartParticles=[],sweatDrops=[];
-let confusedShake=0,confusedDir=1;
-let laughShake=0,laughDir=1;
-let excitedBounce=0,excitedTs=0;
-let isIdle=false,idleTimer=0,nextIdle=2000;
-let workingAngle=0;
-
+// ════════════════════════════════════════════
+//  DRAW FRAME — main loop
+// ════════════════════════════════════════════
 function drawFrame(ts){
   requestAnimationFrame(drawFrame);
   ctx.clearRect(0,0,CW,CH);
+  ctx.save();
 
-  if(ts-lastBlink>nextBlink&&!E.isBlinking&&!E.questionMode&&!E.batteryMode&&!E.clockMode&&!E.sleepMode){
-    doBlink();lastBlink=ts;nextBlink=2000+Math.random()*4000;
+  // canvas shake (ouch)
+  if(shakeX>0){
+    ctx.translate(Math.sin(ts*0.9)*shakeX,(Math.random()-0.5)*shakeX*0.35);
+    shakeX=Math.max(0,shakeX-0.55);
   }
-  if(confusedShake>0){E.lx+=confusedDir*(confusedShake>12?4:2);E.rx+=confusedDir*(confusedShake>12?4:2);confusedShake--;if(confusedShake%4===0)confusedDir*=-1;}
-  if(laughShake>0){E.ly+=laughDir*(laughShake>12?3:1.5);E.ry+=laughDir*(laughShake>12?3:1.5);laughShake--;if(laughShake%3===0)laughDir*=-1;}
-  if(excitedBounce>0){const b=Math.sin((ts-excitedTs)*0.018)*2.5;E.lh=EYE_H+Math.abs(b)*1.8;E.rh=EYE_H+Math.abs(b)*1.8;excitedBounce-=0.4;if(excitedBounce<=0){E.lh=EYE_H;E.rh=EYE_H;}}
-  if(ts-idleTimer>nextIdle&&isIdle&&!E.questionMode&&!E.batteryMode&&!E.clockMode){
-    const dirs=[[0.5,0.5],[0.20,0.25],[0.80,0.25],[0.20,0.75],[0.80,0.75],[0.5,0.20],[0.5,0.80]];
-    const d=dirs[Math.floor(Math.random()*dirs.length)];
-    E.pupilX=d[0];E.pupilY=d[1];idleTimer=ts;nextIdle=1400+Math.random()*2800;
+
+  // auto blink
+  if(ts-lastBlinkTs>nextBlinkMs&&!isBlinking){
+    doBlink(); lastBlinkTs=ts; nextBlinkMs=2000+Math.random()*4000;
   }
-  // working scan
-  if(currentEmotion==='working'){
-    workingAngle+=0.018;
-    E.pupilX=0.5+Math.sin(workingAngle)*0.35;
-    E.pupilY=0.55+Math.cos(workingAngle*0.4)*0.1;
+
+  // laugh bounce
+  if(laughBounce>0&&currentEmotion==='laugh'){
+    laughPhase+=0.18;
+    const b=Math.sin(laughPhase)*3.8*Math.max(0,laughBounce);
+    T.ly=EYE_Y+b; T.ry=EYE_Y+b;
+    laughBounce=Math.max(0,laughBounce-0.007);
   }
+
   // music sway
-  if(musicPlaying&&currentEmotion==='music'){
-    E.ly=EYE_Y+Math.sin(ts*0.003)*3;E.ry=EYE_Y+Math.sin(ts*0.003+0.5)*3;
+  if(musicMode&&currentEmotion==='music'){
+    T.ly=EYE_Y+Math.sin(ts*0.003)*2.5;
+    T.ry=EYE_Y+Math.sin(ts*0.003+0.5)*2.5;
   }
-  let hOff=0,vOff=0;
-  if(E.hFlicker){hOff=E.hTog?E.hAmp:-E.hAmp;E.hTog=!E.hTog;}
-  if(E.vFlicker){vOff=E.vTog?E.vAmp:-E.vAmp;E.vTog=!E.vTog;}
 
+  // working scan
+  if(currentEmotion==='working') scanLineY=(scanLineY+0.009)%1;
+
+  // dizzy spin
+  if(currentEmotion==='dizzy'){
+    dizzyAngle+=0.055;
+    T.pupilX=0.5+Math.cos(dizzyAngle)*0.28;
+    T.pupilY=0.5+Math.sin(dizzyAngle)*0.18;
+  }
+
+  tickParticles(ts);
   interpEyes();
-  interpEyeSocket();
 
-  // Advance scan line
-  if(currentEmotion==='working') scanLineY=(scanLineY+0.008)%1;
+  // socket shift (square mode only)
+  const sx=eyeStyle==='square'?C.esxC:0;
+  const sy=eyeStyle==='square'?C.esyC:0;
+  const lx=C.lx+sx, ly=C.ly+sy;
+  const rx=C.rx+sx, ry=C.ry+sy;
+  // brows: FIXED — no socket shift
+  const blx=C.lx, bly=C.ly, brx=C.rx, bry=C.ry;
 
-  if(E.questionMode){drawQuestion(CX,CY);}
-  else if(E.batteryMode){drawBattery(CX,CY,E.batteryLevel);}
-  else if(E.clockMode){drawClock(CX,CY,E.clockHover);}
-  else if(E.sleepMode){
-    // Fully closed eyes — thin horizontal lines
-    const lsx=E.lxC+ES.xC, rsx=E.rxC+ES.xC;
-    const lsy=E.lyC+ES.yC+E.lhC/2-1, rsy=E.ryC+ES.yC+E.rhC/2-1;
-    rRect(lsx,lsy,E.lwC,3,2,E.color);
-    rRect(rsx,rsy,E.rwC,3,2,E.color);
-    drawSquareEyebrows(ts);
+  // ── DRAW EYES ──
+  if(T.sleepMode){
+    drawSleepEye(lx,ly,C.lw,C.lhC);
+    drawSleepEye(rx,ry,C.rw,C.rhC);
+    if(eyeStyle==='square'){ drawEyebrow(blx,bly,C.lw,'neutral',T.color+'bb'); drawEyebrow(brx,bry,C.rw,'neutral',T.color+'bb'); }
+
+  } else if(currentEmotion==='chilling'){
+    drawChillingEye(lx,ly,C.lw,C.lhC);
+    drawChillingEye(rx,ry,C.rw,C.rhC);
+    drawEyebrow(blx,bly,C.lw,browL,T.color+'bb');
+    drawEyebrow(brx,bry,C.rw,browR,T.color+'bb');
+
   } else if(currentEmotion==='dizzy'){
-    // X-eyes like 😵
-    const lx2=E.lxC+hOff+ES.xC, ly2=E.lyC+vOff+ES.yC;
-    const rx2=E.rxC+hOff+ES.xC, ry2=E.ryC+vOff+ES.yC;
-    drawDizzyEye(lx2,ly2,E.lwC,E.lhC,E.lbrC);
-    drawDizzyEye(rx2,ry2,E.rwC,E.rhC,E.rbrC);
-    drawSquareEyebrows(ts);
-  } else if(currentEmotion==='working'&&eyeStyle==='square'){
-    // Scanning beam in square mode
-    const lx3=E.lxC+hOff+ES.xC, ly3=E.lyC+vOff+ES.yC;
-    const rx3=E.rxC+hOff+ES.xC, ry3=E.ryC+vOff+ES.yC;
-    drawScanBeam(lx3,ly3,E.lwC,E.lhC,E.lbrC,ts);
-    drawScanBeam(rx3,ry3,E.rwC,E.rhC,E.rbrC,ts);
-    drawSquareEyebrows(ts);
+    drawDizzyEye(lx,ly,C.lw,C.lhC,C.lbr);
+    drawDizzyEye(rx,ry,C.rw,C.rhC,C.rbr);
+    if(eyeStyle==='square'){ drawEyebrow(blx,bly,C.lw,'worried_l',T.color+'bb'); drawEyebrow(brx,bry,C.rw,'worried_r',T.color+'bb'); }
+
+  } else if(currentEmotion==='working'){
+    drawScanEye(lx,ly,C.lw,C.lhC,C.lbr);
+    drawScanEye(rx,ry,C.rw,C.rhC,C.rbr);
+    if(eyeStyle==='square'){ drawEyebrow(blx,bly,C.lw,'thinking_l',T.color+'bb'); drawEyebrow(brx,bry,C.rw,'thinking_l',T.color+'bb'); }
+
+  } else if(currentEmotion==='unamused'){
+    drawUnamusedEye(lx,ly,C.lw,C.lhC,C.lbr);
+    drawUnamusedEye(rx,ry,C.rw,C.rhC,C.rbr);
+    drawEyebrow(blx,bly,C.lw,'unamused_l',T.color+'bb');
+    drawEyebrow(brx,bry,C.rw,'unamused_r',T.color+'bb');
+
+  } else if(currentEmotion==='crying'&&eyeStyle==='square'){
+    drawCrySquareEye(lx,ly,C.lw,C.lhC);
+    drawCrySquareEye(rx,ry,C.rw,C.rhC);
+    drawEyebrow(blx,bly,C.lw,'cry_l',T.color+'bb');
+    drawEyebrow(brx,bry,C.rw,'cry_r',T.color+'bb');
+
+  } else if(eyeStyle==='square'){
+    drawSquareEye(lx,ly,C.lw,C.lhC,C.lbr,true);
+    drawSquareEye(rx,ry,C.rw,C.rhC,C.rbr,false);
+    if(T.blushMode) drawBlush();
+    drawEyebrow(blx,bly,C.lw,browL,T.color+'bb');
+    drawEyebrow(brx,bry,C.rw,browR,T.color+'bb');
+
   } else {
-    const lx4=E.lxC+hOff, ly4=E.lyC+vOff;
-    const rx4=E.rxC+hOff, ry4=E.ryC+vOff;
-    drawEye(lx4,ly4,E.lwC,E.lhC,E.lbrC,E.tiredHC,E.angryHC,E.happyOffC,E.pupilXC,E.pupilYC,E.pupilSizeC,true);
-    drawEye(rx4,ry4,E.rwC,E.rhC,E.rbrC,E.tiredHC,E.angryHC,E.happyOffC,E.pupilXC,E.pupilYC,E.pupilSizeC,false);
-    drawSquareEyebrows(ts);
-    if(E.blushMode) drawBlush(E.lxC,E.lwC,E.rxC,E.rwC,E.lyC,E.lhC);
-    if(currentEmotion==='listening') drawHeadphones(E.lxC,E.lyC,E.lwC,E.rxC,E.rwC,E.lhC);
+    drawPupilEye(lx,ly,C.lw,C.lhC,C.lbr,true);
+    drawPupilEye(rx,ry,C.rw,C.rhC,C.rbr,false);
+    if(T.blushMode) drawBlush();
   }
 
-  // Zzz particles
-  if(ts%80<16&&(currentEmotion==='sleeping'))spawnZzz();
-  zzzParticles=zzzParticles.filter(p=>{
-    p.x+=p.vx;p.y+=p.vy;p.life--;p.alpha=p.life/p.maxLife;
-    if(p.life<=0)return false;
-    ctx.save();ctx.globalAlpha=p.alpha;ctx.fillStyle=E.color;
-    ctx.font=`bold ${p.size}px "Space Grotesk",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText('z',p.x,p.y);ctx.restore();return true;
-  });
-
-  // Heart particles
-  heartParticles=heartParticles.filter(p=>{
-    p.y-=p.vy;p.x+=p.vx;p.life--;p.alpha=p.life/p.maxLife;
-    if(p.life<=0)return false;
-    ctx.save();ctx.globalAlpha=p.alpha;drawHeart(p.x,p.y,p.size,'#f472b6');ctx.restore();return true;
-  });
-
-  // Music note particles
-  if(musicPlaying){
-    if(ts-musicNoteTimer>500){
-      musicNoteTimer=ts;
-      musicNotes.push({
-        x:EYE_LX+Math.random()*(EYE_RX+EYE_W-EYE_LX),y:EYE_Y+EYE_H/2,
-        ch:NOTE_CHARS[Math.floor(Math.random()*NOTE_CHARS.length)],
-        vx:(Math.random()-0.5)*0.6,vy:1.2+Math.random()*0.8,
-        size:10+Math.random()*8,life:80,maxLife:80,alpha:1
-      });
-    }
+  // glasses on top (cool emotion)
+  if(currentEmotion==='cool'){
+    drawGlasses();
+    if(eyeStyle==='square'){ drawEyebrow(blx,bly,C.lw,'cool',T.color+'bb'); drawEyebrow(brx,bry,C.rw,'cool',T.color+'bb'); }
   }
-  musicNotes=musicNotes.filter(n=>{
-    n.y-=n.vy;n.x+=n.vx;n.life--;n.alpha=Math.min(1,n.life/20*(n.life/n.maxLife));
-    if(n.life<=0)return false;
-    ctx.save();ctx.globalAlpha=n.alpha;ctx.fillStyle='#fbbf24';
-    ctx.font=`${n.size}px "Space Grotesk",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(n.ch,n.x,n.y);ctx.restore();return true;
-  });
 
-  // Sweat drops
-  sweatDrops=sweatDrops.filter(d=>{
-    d.y+=d.vy;d.life--;if(d.life<=0)return false;
-    ctx.save();ctx.globalAlpha=d.life/d.maxLife;ctx.fillStyle='rgba(96,165,250,0.75)';
-    ctx.beginPath();ctx.arc(d.x,d.y,d.r,0,Math.PI*2);ctx.fill();ctx.restore();return true;
-  });
-
-  // Working spinner overlay
-  if(currentEmotion==='working'){
-    ctx.save();ctx.strokeStyle=E.color+'88';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.arc(CX,CY+50,10,0,Math.PI*1.5);ctx.stroke();
-    ctx.restore();
-  }
+  drawParticles();
+  ctx.restore();
 }
 
-function doBlink(){
-  if(E.isBlinking||E.sleepMode)return;
-  E.isBlinking=true;const oL=E.lh,oR=E.rh;
-  E.lh=1;E.rh=1;setTimeout(()=>{E.lh=oL;E.rh=oR;E.isBlinking=false;},190);
-}
-
-function setEyeColor(c){E.color=c;canvas.style.filter=`drop-shadow(0 0 18px ${c}35)`;}
+// ── helper functions still used by EMOTIONS / dashboard ──
+function setEyeColor(c){ T.color=c; canvas.style.filter=`drop-shadow(0 0 18px ${c}35)`; }
 function setMoodOverlay(color,opacity){
-  const el=document.getElementById('vegaMoodOverlay');if(!el)return;
+  const el=document.getElementById('vegaMoodOverlay'); if(!el) return;
   el.style.background=color?`${color}${Math.round(opacity*255).toString(16).padStart(2,'0')}`:'transparent';
 }
+function _st(t){ const el=document.getElementById('vegaStatus'); if(el) el.textContent=t; }
 
-// ── Eye style toggle ──
-function toggleEyeStyle(){
-  eyeStyle=eyeStyle==='pupils'?'square':'pupils';
-  const btn=document.getElementById('eyeStyleBtn');
-  if(btn){btn.textContent=eyeStyle==='pupils'?'Pupils':'Square';btn.classList.toggle('active',eyeStyle==='pupils');}
-  E.lbr=getBR();E.rbr=getBR();
-  showToast(eyeStyle==='pupils'?'Eyes: Pupils style':'Eyes: Square (RoboEyes classic)');
-}
+// ── Init ──
+setTimeout(()=>{ T.lh=EYE_H; T.rh=EYE_H; },300);
+requestAnimationFrame(drawFrame);
 
 // ════════════════════════════════════════════
 //  EMOTIONS
 // ════════════════════════════════════════════
-let currentEmotion='neutral';
-let emotionHistory=[];
-
-function _st(t){const el=document.getElementById('vegaStatus');if(el)el.textContent=t;}
+let currentEmotion = 'neutral';
+let emotionHistory = [];
 
 const EMOTIONS={
-  neutral:{label:'Neutral',color:'#5ee7df',apply(){resetEyeTargets();setEyeColor('#5ee7df');setMoodOverlay(null,0);isIdle=false;_st('Online · Ready');}},
-  happy:{label:'Happy',color:'#4ade80',apply(){resetEyeTargets();E.happyOff=EYE_H*0.46;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('');}},
-  sad:{label:'Sad',color:'#60a5fa',apply(){
-    resetEyeTargets();E.tiredH=EYE_H*0.3;E.pupilY=0.66;E.lh=EYE_H*0.74;E.rh=EYE_H*0.74;
-    setEyeColor('#60a5fa');setMoodOverlay('#60a5fa',0.05);
-    for(let i=0;i<5;i++)sweatDrops.push({x:80+Math.random()*120,y:18+Math.random()*18,vy:0.4+Math.random()*0.35,r:2+Math.random()*2,life:80+Math.random()*40,maxLife:120});
-    _st('');
-  }},
-  crying:{label:'Crying',color:'#93c5fd',apply(){
-    resetEyeTargets();
-    // Eyes squeezed mostly shut — very different from sad
-    E.tiredH=EYE_H*0.62;E.lh=EYE_H*0.52;E.rh=EYE_H*0.52;
-    E.lw=EYE_W*0.88;E.rw=EYE_W*0.88;
-    E.pupilY=0.78;E.pupilX=0.5;
-    // Strong blue tint
-    setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.12);
-    // Big continuous tear streams — spawn many in waves
-    function spawnTears(){
-      if(currentEmotion!=='crying') return;
-      // Left eye tears
-      for(let i=0;i<3;i++) sweatDrops.push({
-        x:E.lx+EYE_W*(0.25+Math.random()*0.5),
-        y:E.ly+EYE_H*0.55,
-        vy:1.2+Math.random()*0.8,r:3+Math.random()*2,
-        life:110+Math.random()*40,maxLife:150
-      });
-      // Right eye tears
-      for(let i=0;i<3;i++) sweatDrops.push({
-        x:E.rx+EYE_W*(0.25+Math.random()*0.5),
-        y:E.ry+EYE_H*0.55,
-        vy:1.2+Math.random()*0.8,r:3+Math.random()*2,
-        life:110+Math.random()*40,maxLife:150
-      });
-      setTimeout(spawnTears,350);
-    }
-    spawnTears();
-    // Vflicker — trembling while crying
-    E.vFlicker=true;E.vAmp=1;
-    _st('Please stop... 😢');
-  }},
-  ouch:{label:'Ouch!',color:'#f87171',apply(){
-    resetEyeTargets();
-    // 😣 — eyes squeezed very narrow, brows pushed hard together
-    E.lh=EYE_H*0.22;E.rh=EYE_H*0.22;
-    E.lw=EYE_W*0.82;E.rw=EYE_W*0.82;
-    E.tiredH=EYE_H*0.22;
-    E.hFlicker=true;E.hAmp=5;
-    setEyeColor('#f87171');setMoodOverlay('#f87171',0.14);_st('Ow!');
-  }},
-  hurt:{label:'Hurt',color:'#f87171',apply(){
-    resetEyeTargets();
-    // 😣 held — slightly more open than ouch but still squeezed
-    E.lh=EYE_H*0.30;E.rh=EYE_H*0.30;
-    E.tiredH=EYE_H*0.30;E.pupilY=0.72;
-    setEyeColor('#f87171');setMoodOverlay('#f87171',0.09);_st('That hurt...');
-  }},
-  speaking:{label:'Speaking',color:'#5ee7df',apply(){
-    // Speaking does NOT reset or change eye expression
-    // Only updates status text — current emotion face stays
-    _st('Speaking...');
-  }},
-  confused:{label:'Confused',color:'#fbbf24',apply(){
-    resetEyeTargets();E.lw=EYE_W*0.84;E.rw=EYE_W*1.14;E.lh=EYE_H*0.88;E.rh=EYE_H*1.0;
-    E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*0.6;
-    E.pupilX=0.44;E.pupilY=0.4;confusedShake=28;
-    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Hmm...');
-  }},
-  surprised:{label:'Surprised',color:'#f59e0b',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.22;E.rw=EYE_W*1.22;E.lh=EYE_H*1.26;E.rh=EYE_H*1.26;E.lbr=getBR();E.rbr=getBR();
-    E.pupilSize=0.24;setEyeColor('#f59e0b');setMoodOverlay('#f59e0b',0.04);_st('Whoa!');
-  }},
-  thinking:{label:'Thinking',color:'#b490ff',apply(){
-    resetEyeTargets();E.pupilX=0.20;E.pupilY=0.22;E.lh=EYE_H*0.88;
-    E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*0.55;
-    setEyeColor('#b490ff');setMoodOverlay('#b490ff',0.04);_st('Processing...');
-  }},
-  working:{label:'Working',color:'#38bdf8',apply(){
-    resetEyeTargets();E.lh=EYE_H*0.82;E.rh=EYE_H*0.82;E.pupilSize=0.28;
-    setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('On it...');
-  }},
-  sleepy:{label:'Sleepy',color:'#818cf8',apply(){
-    resetEyeTargets();E.tiredH=EYE_H*0.54;E.lh=EYE_H*0.54;E.rh=EYE_H*0.54;
-    E.pupilSize=0.26;E.pupilY=0.64;setEyeColor('#818cf8');setMoodOverlay('#818cf8',0.07);
-    isIdle=true;nextIdle=4000;_st('Getting sleepy...');
-  }},
-  sleeping:{label:'Sleeping',color:'#6366f1',apply(){
-    resetEyeTargets();E.sleepMode=true;E.lh=EYE_H;E.rh=EYE_H;
-    E.lhC=1;E.rhC=1;
-    setEyeColor('#6366f1');setMoodOverlay('#6366f1',0.1);
-    isIdle=false;_st('Zzz...');
-  }},
-  excited:{label:'Excited',color:'#fb923c',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.16;E.rw=EYE_W*1.16;E.lh=EYE_H*1.12;E.rh=EYE_H*1.12;
-    excitedBounce=140;excitedTs=performance.now();setEyeColor('#fb923c');setMoodOverlay('#fb923c',0.05);_st('');
-  }},
-  listening:{label:'Listening',color:'#34d399',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.06;E.rw=EYE_W*1.06;E.lh=EYE_H*1.06;E.rh=EYE_H*1.06;
-    E.pupilX=0.5;E.pupilY=0.5;E.pupilSize=0.30;setEyeColor('#34d399');setMoodOverlay('#34d399',0.03);_st('Listening...');
-  }},
-  speaking:{label:'Speaking',color:'#5ee7df',apply(){
-    resetEyeTargets();laughShake=28;E.lh=EYE_H*0.9;E.rh=EYE_H*0.9;setEyeColor('#5ee7df');_st('Speaking...');
-  }},
-  angry:{label:'Angry',color:'#ef4444',apply(){
-    resetEyeTargets();E.angryH=EYE_H*0.44;E.lw=EYE_W*1.06;E.rw=EYE_W*1.06;
-    setEyeColor('#ef4444');setMoodOverlay('#ef4444',0.09);_st('');
-  }},
-  love:{label:'Love',color:'#f472b6',apply(){
-    resetEyeTargets();E.heartPupils=true;E.lh=EYE_H*1.06;E.rh=EYE_H*1.06;
-    setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.06);
-    for(let i=0;i<14;i++)setTimeout(()=>heartParticles.push({x:CX+(Math.random()-0.5)*160,y:CH*0.82,vx:(Math.random()-0.5)*1.3,vy:1.3+Math.random()*1.3,size:5+Math.random()*8,life:80+Math.random()*40,maxLife:120,alpha:1}),i*110);
-    _st('');
-  }},
-  blush:{label:'Blushing',color:'#fb7185',apply(){
-    resetEyeTargets();E.blushMode=true;E.lh=EYE_H*0.9;E.rh=EYE_H*0.9;E.happyOff=EYE_H*0.22;E.pupilX=0.42;E.pupilY=0.52;
-    setEyeColor('#fb7185');setMoodOverlay('#fb7185',0.04);_st('');
-  }},
-  nervous:{label:'Nervous',color:'#fbbf24',apply(){
-    resetEyeTargets();E.vFlicker=true;E.vAmp=1.8;E.hFlicker=true;E.hAmp=1.4;E.lh=EYE_H*0.82;E.rh=EYE_H*0.82;
-    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);
-    for(let i=0;i<9;i++)sweatDrops.push({x:28+Math.random()*224,y:8+Math.random()*14,vy:0.5+Math.random()*0.5,r:1.5+Math.random()*2,life:60+Math.random()*40,maxLife:100});
-    _st('');
-  }},
-  frustrated:{label:'Frustrated',color:'#dc2626',apply(){
-    resetEyeTargets();E.angryH=EYE_H*0.58;E.lh=EYE_H*0.70;E.rh=EYE_H*0.70;E.hFlicker=true;E.hAmp=2.2;
-    setEyeColor('#dc2626');setMoodOverlay('#dc2626',0.11);_st('Ugh!');
-  }},
-  pleading:{label:'Pleading',color:'#93c5fd',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.30;E.rw=EYE_W*1.30;E.lh=EYE_H*1.30;E.rh=EYE_H*1.30;
-    E.pupilSize=0.50;E.lbr=getBR()===EYE_BR_SQUARE?EYE_BR_SQUARE:EYE_BR_ROUND*1.5;E.rbr=E.lbr;E.pupilY=0.56;
-    setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.05);_st('Please...');
-  }},
-  sarcastic:{label:'Unimpressed',color:'#94a3b8',apply(){
-    resetEyeTargets();E.lh=EYE_H*0.40;E.rh=EYE_H*0.72;E.tiredH=EYE_H*0.20;E.pupilX=0.5;E.pupilY=0.62;
-    setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('Really?');
-  }},
-  alert:{label:'Alert',color:'#f97316',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.20;E.rw=EYE_W*1.20;E.lh=EYE_H*1.20;E.rh=EYE_H*1.20;E.pupilSize=0.44;
-    setEyeColor('#f97316');setMoodOverlay('#f97316',0.05);_st('Alert!');
-  }},
-  speechless:{label:'Speechless',color:'#e2e8f0',apply(){
-    resetEyeTargets();E.lw=EYE_W*1.32;E.rw=EYE_W*1.32;E.lh=EYE_H*1.32;E.rh=EYE_H*1.32;E.pupilSize=0.20;E.vFlicker=true;E.vAmp=1;
-    setEyeColor('#e2e8f0');setMoodOverlay(null,0);_st('...');
-  }},
-  chilling:{label:'Chilling',color:'#38bdf8',apply(){
-    resetEyeTargets();E.tiredH=EYE_H*0.26;E.lh=EYE_H*0.72;E.rh=EYE_H*0.72;E.pupilSize=0.29;
-    isIdle=true;nextIdle=3500;setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('Chillin\'');
-  }},
-  curious:{label:'Curious',color:'#a78bfa',apply(){
-    resetEyeTargets();E.lw=EYE_W*0.84;E.rw=EYE_W*1.22;E.lh=EYE_H*0.9;E.rh=EYE_H*1.12;E.pupilX=0.74;
-    setEyeColor('#a78bfa');setMoodOverlay('#a78bfa',0.04);_st('Interesting...');
-  }},
-  laugh:{label:'Laughing',color:'#4ade80',apply(){
-    resetEyeTargets();E.happyOff=EYE_H*0.55;laughShake=45;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.05);_st('Haha!');
-  }},
-  music:{label:'Vibing',color:'#fbbf24',apply(){
-    resetEyeTargets();E.happyOff=EYE_H*0.22;E.lh=EYE_H*0.88;E.rh=EYE_H*0.88;
-    setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('♪ Vibing...');
-  }},
-  question:{label:'What?',color:'#fbbf24',apply(){resetEyeTargets();E.questionMode=true;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Could you rephrase that?');}},
-  battery_high:{label:'Battery OK',color:'#4ade80',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.82;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('Battery good');setTimeout(()=>setEmotion('neutral'),4500);}},
-  battery_mid:{label:'Battery Mid',color:'#fbbf24',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.44;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.05);_st('Battery draining');setTimeout(()=>setEmotion('neutral'),4500);}},
-  battery_low:{label:'Battery Low!',color:'#f87171',apply(){resetEyeTargets();E.batteryMode=true;E.batteryLevel=0.11;setEyeColor('#f87171');setMoodOverlay('#f87171',0.11);_st('Plug in!');setTimeout(()=>setEmotion('neutral'),5000);}},
-  clock:{label:'Time',color:'#5ee7df',apply(){resetEyeTargets();E.clockMode=true;setEyeColor('#5ee7df');setMoodOverlay(null,0);_st('');setTimeout(()=>setEmotion('neutral'),7000);}},
-  look_topleft:{label:'↖ Top-left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.16;E.pupilY=0.16;setEyeColor('#5ee7df');}},
-  look_topright:{label:'↗ Top-right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.84;E.pupilY=0.16;setEyeColor('#5ee7df');}},
-  look_bottomleft:{label:'↙ Bottom-left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.16;E.pupilY=0.84;setEyeColor('#5ee7df');}},
-  look_bottomright:{label:'↘ Bottom-right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.84;E.pupilY=0.84;setEyeColor('#5ee7df');}},
-  look_left:{label:'◀ Left',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.12;E.pupilY=0.5;setEyeColor('#5ee7df');}},
-  look_right:{label:'▶ Right',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.88;E.pupilY=0.5;setEyeColor('#5ee7df');}},
-  look_up:{label:'▲ Up',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.5;E.pupilY=0.12;setEyeColor('#5ee7df');}},
-  look_down:{label:'▼ Down',color:'#5ee7df',apply(){resetEyeTargets();E.pupilX=0.5;E.pupilY=0.88;setEyeColor('#5ee7df');}},
-  cool:{label:'Cool 😎',color:'#38bdf8',apply(){
-    resetEyeTargets();
-    // Half-lidded confident eyes — top eyelid covers 40%
-    E.tiredH=EYE_H*0.40;E.lh=EYE_H*0.92;E.rh=EYE_H*0.92;
-    E.pupilY=0.62;E.pupilX=0.5;
-    setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('');
-  }},
-  wink:{label:'Wink 😉',color:'#4ade80',apply(){
-    resetEyeTargets();
-    // Right eye closed (wink), left eye normal
-    E.rh=1;E.lh=EYE_H;E.happyOff=EYE_H*0.15;
-    setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.03);_st('');
-    // Reopen right eye after 600ms
-    setTimeout(()=>{if(currentEmotion==='wink'){E.rh=EYE_H;}},600);
-  }},
-  unamused:{label:'Unamused 😒',color:'#94a3b8',apply(){
-    resetEyeTargets();
-    // Both eyes half-lidded, looking slightly sideways — bored look
-    E.tiredH=EYE_H*0.35;E.lh=EYE_H*0.75;E.rh=EYE_H*0.75;
-    E.pupilX=0.38;E.pupilY=0.58;
-    setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('...');
-  }},
-  dizzy:{label:'Dizzy 😵',color:'#f472b6',apply(){
-    resetEyeTargets();
-    // Eyes spinning — we animate via dizzyAngle
-    E.lw=EYE_W*1.1;E.rw=EYE_W*1.1;E.lh=EYE_H*1.1;E.rh=EYE_H*1.1;
-    setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.07);_st('Whoa...');
-    // Auto recover after 3s
-    setTimeout(()=>{if(currentEmotion==='dizzy')setEmotion('neutral');},3000);
-  }},
+  neutral:{label:'Neutral',color:'#5ee7df',apply(){resetEyeTargets();setEyeColor('#5ee7df');setMoodOverlay(null,0);_st('Online · Ready');}},
+  happy:{label:'Happy',color:'#4ade80',apply(){resetEyeTargets();T.happyOff=EYE_H*0.46;browL='happy';browR='happy';setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('');}},
+  sad:{label:'Sad',color:'#60a5fa',apply(){resetEyeTargets();T.tiredH=EYE_H*0.3;T.lh=EYE_H*0.74;T.rh=EYE_H*0.74;T.pupilY=0.66;browL='sad_l';browR='sad_r';setEyeColor('#60a5fa');setMoodOverlay('#60a5fa',0.05);for(let i=0;i<5;i++)tearDrops.push({x:55+Math.random()*110,y:15,vy:0.3+Math.random()*0.24,r:1.8+Math.random()*1.3,life:80,maxLife:80,type:'tear'});_st('');}},
+  crying:{label:'Crying',color:'#93c5fd',apply(){resetEyeTargets();T.tiredH=EYE_H*0.62;T.lh=EYE_H*0.52;T.rh=EYE_H*0.52;T.pupilY=0.78;browL='cry_l';browR='cry_r';setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.12);spawnTears(true);_st('Please stop... 😢');}},
+  angry:{label:'Angry',color:'#ef4444',apply(){resetEyeTargets();T.angryH=EYE_H*0.44;T.lw=EYE_W*1.06;T.rw=EYE_W*1.06;browL='angry_l';browR='angry_r';setEyeColor('#ef4444');setMoodOverlay('#ef4444',0.09);_st('');}},
+  frustrated:{label:'Frustrated',color:'#dc2626',apply(){resetEyeTargets();T.angryH=EYE_H*0.58;T.lh=EYE_H*0.7;T.rh=EYE_H*0.7;browL='angry_l';browR='angry_r';setEyeColor('#dc2626');setMoodOverlay('#dc2626',0.11);_st('Ugh!');}},
+  surprised:{label:'Surprised',color:'#f59e0b',apply(){resetEyeTargets();T.lh=EYE_H*1.26;T.rh=EYE_H*1.26;T.lw=EYE_W*1.22;T.rw=EYE_W*1.22;T.pupilSize=0.24;browL='surprised';browR='surprised';setEyeColor('#f59e0b');setMoodOverlay('#f59e0b',0.04);_st('Whoa!');}},
+  confused:{label:'Confused',color:'#fbbf24',apply(){resetEyeTargets();T.lw=EYE_W*0.84;T.rw=EYE_W*1.14;T.lh=EYE_H*0.88;T.pupilX=0.44;T.pupilY=0.4;browL='confused_l';browR='confused_r';setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Hmm...');}},
+  thinking:{label:'Thinking',color:'#b490ff',apply(){resetEyeTargets();T.lh=EYE_H*0.88;T.rh=EYE_H*0.88;T.pupilX=0.20;T.pupilY=0.22;browL='thinking_l';browR='thinking_r';setEyeColor('#b490ff');setMoodOverlay('#b490ff',0.04);_st('Processing...');}},
+  working:{label:'Working',color:'#38bdf8',apply(){resetEyeTargets();T.lh=EYE_H*0.82;T.rh=EYE_H*0.82;T.pupilSize=0.28;browL='thinking_l';browR='thinking_l';setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('On it...');}},
+  excited:{label:'Excited',color:'#fb923c',apply(){resetEyeTargets();T.lh=EYE_H*1.12;T.rh=EYE_H*1.12;T.lw=EYE_W*1.16;T.rw=EYE_W*1.16;browL='excited';browR='excited';setEyeColor('#fb923c');setMoodOverlay('#fb923c',0.05);_st('');}},
+  listening:{label:'Listening',color:'#34d399',apply(){resetEyeTargets();T.lw=EYE_W*1.06;T.rw=EYE_W*1.06;T.lh=EYE_H*1.06;T.rh=EYE_H*1.06;T.pupilSize=0.30;browL='neutral';browR='neutral';setEyeColor('#34d399');setMoodOverlay('#34d399',0.03);_st('Listening...');}},
+  speaking:{label:'Speaking',color:'#5ee7df',apply(){resetEyeTargets();T.lh=EYE_H*0.9;T.rh=EYE_H*0.9;browL='neutral';browR='neutral';setEyeColor('#5ee7df');_st('Speaking...');}},
+  love:{label:'Love',color:'#f472b6',apply(){resetEyeTargets();T.heartPupils=true;T.lh=EYE_H*1.06;T.rh=EYE_H*1.06;browL='happy';browR='happy';setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.06);for(let i=0;i<14;i++)setTimeout(()=>heartParticles.push({x:CX+(Math.random()-0.5)*160,y:CH*0.82,vx:(Math.random()-0.5)*1.3,vy:1.3+Math.random()*1.3,size:5+Math.random()*8,life:80,maxLife:80}),i*110);_st('');}},
+  blush:{label:'Blushing',color:'#fb7185',apply(){resetEyeTargets();T.blushMode=true;T.lh=EYE_H*0.9;T.rh=EYE_H*0.9;T.happyOff=EYE_H*0.22;T.pupilX=0.42;T.pupilY=0.52;browL='happy';browR='happy';setEyeColor('#fb7185');setMoodOverlay('#fb7185',0.04);_st('');}},
+  nervous:{label:'Nervous',color:'#fbbf24',apply(){resetEyeTargets();T.lh=EYE_H*0.82;T.rh=EYE_H*0.82;browL='worried_l';browR='worried_r';setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);for(let i=0;i<9;i++)tearDrops.push({x:28+Math.random()*224,y:8+Math.random()*14,vy:0.5+Math.random()*0.5,r:1.5+Math.random()*2,life:60,maxLife:60,type:'sweat'});_st('');}},
+  pleading:{label:'Pleading',color:'#93c5fd',apply(){resetEyeTargets();T.lh=EYE_H*1.3;T.rh=EYE_H*1.3;T.lw=EYE_W*1.3;T.rw=EYE_W*1.3;T.pupilSize=0.50;T.pupilY=0.56;browL='pleading_l';browR='pleading_r';setEyeColor('#93c5fd');setMoodOverlay('#93c5fd',0.05);_st('Please...');}},
+  sarcastic:{label:'Unimpressed',color:'#94a3b8',apply(){resetEyeTargets();T.lh=EYE_H*0.4;T.rh=EYE_H*0.72;T.tiredH=EYE_H*0.20;T.pupilY=0.62;browL='sarc_l';browR='sarc_r';setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('Really?');}},
+  alert:{label:'Alert',color:'#f97316',apply(){resetEyeTargets();T.lh=EYE_H*1.2;T.rh=EYE_H*1.2;T.lw=EYE_W*1.2;T.rw=EYE_W*1.2;T.pupilSize=0.44;browL='surprised';browR='surprised';setEyeColor('#f97316');setMoodOverlay('#f97316',0.05);_st('Alert!');}},
+  speechless:{label:'Speechless',color:'#e2e8f0',apply(){resetEyeTargets();T.lh=EYE_H*1.32;T.rh=EYE_H*1.32;T.lw=EYE_W*1.32;T.rw=EYE_W*1.32;T.pupilSize=0.20;browL='surprised';browR='surprised';setEyeColor('#e2e8f0');setMoodOverlay(null,0);_st('...');}},
+  chilling:{label:'Chilling',color:'#38bdf8',apply(){resetEyeTargets();T.chillingMode=true;T.lh=EYE_H;T.rh=EYE_H;browL='chill_l';browR='chill_r';setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st("Chillin'");}},
+  curious:{label:'Curious',color:'#a78bfa',apply(){resetEyeTargets();T.lw=EYE_W*0.84;T.rw=EYE_W*1.22;T.lh=EYE_H*0.9;T.rh=EYE_H*1.12;T.pupilX=0.74;browL='confused_l';browR='excited';setEyeColor('#a78bfa');setMoodOverlay('#a78bfa',0.04);_st('Interesting...');}},
+  laugh:{label:'Laughing',color:'#4ade80',apply(){resetEyeTargets();T.happyOff=EYE_H*0.62;laughBounce=1;laughPhase=0;browL='excited';browR='excited';setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.05);for(let i=0;i<4;i++)tearDrops.push({x:T.lx+EYE_W*(0.2+Math.random()*0.35),y:T.ly+EYE_H*0.5,vy:0.65+Math.random()*0.4,r:1.4+Math.random()*1,life:60,maxLife:60,type:'tear'});for(let i=0;i<4;i++)tearDrops.push({x:T.rx+EYE_W*(0.5+Math.random()*0.3),y:T.ry+EYE_H*0.5,vy:0.65+Math.random()*0.4,r:1.4+Math.random()*1,life:60,maxLife:60,type:'tear'});_st('Haha!');}},
+  music:{label:'Vibing',color:'#fbbf24',apply(){resetEyeTargets();T.happyOff=EYE_H*0.22;T.lh=EYE_H*0.88;T.rh=EYE_H*0.88;browL='happy';browR='happy';musicMode=true;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('♪ Vibing...');}},
+  cool:{label:'Cool 😎',color:'#38bdf8',apply(){resetEyeTargets();T.lh=EYE_H;T.rh=EYE_H;T.pupilY=0.38;browL='cool';browR='cool';setEyeColor('#38bdf8');setMoodOverlay('#38bdf8',0.04);_st('');}},
+  wink:{label:'Wink 😉',color:'#4ade80',apply(){resetEyeTargets();T.rh=1;T.lh=EYE_H;T.happyOff=EYE_H*0.15;browL='happy';browR='wink';setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.03);_st('');setTimeout(()=>{if(currentEmotion==='wink')T.rh=EYE_H;},600);}},
+  unamused:{label:'Unamused 😒',color:'#94a3b8',apply(){resetEyeTargets();T.lh=EYE_H;T.rh=EYE_H;browL='unamused_l';browR='unamused_r';setEyeColor('#94a3b8');setMoodOverlay(null,0);_st('...');}},
+  sleepy:{label:'Sleepy',color:'#818cf8',apply(){resetEyeTargets();T.tiredH=EYE_H*0.54;T.lh=EYE_H*0.54;T.rh=EYE_H*0.54;T.pupilSize=0.26;T.pupilY=0.64;browL='sad_l';browR='sad_r';setEyeColor('#818cf8');setMoodOverlay('#818cf8',0.07);_st('Getting sleepy...');}},
+  sleeping:{label:'Sleeping',color:'#6366f1',apply(){resetEyeTargets();T.sleepMode=true;T.lh=EYE_H;T.rh=EYE_H;C.lhC=1;C.rhC=1;browL='neutral';browR='neutral';setEyeColor('#6366f1');setMoodOverlay('#6366f1',0.1);_st('Zzz...');(function spawnZ(){if(currentEmotion!=='sleeping')return;zzzParticles.push({x:EYE_RX+EYE_W*0.8+Math.random()*20,y:EYE_Y-5+Math.random()*10,vx:0.4+Math.random()*0.3,vy:-0.5-Math.random()*0.4,size:8+Math.random()*8,life:100,maxLife:100});setTimeout(spawnZ,700);})();}},
+  dizzy:{label:'Dizzy 😵',color:'#f472b6',apply(){resetEyeTargets();T.lh=EYE_H*1.1;T.rh=EYE_H*1.1;T.lw=EYE_W*1.1;T.rw=EYE_W*1.1;browL='worried_l';browR='worried_r';setEyeColor('#f472b6');setMoodOverlay('#f472b6',0.07);_st('Whoa...');setTimeout(()=>{if(currentEmotion==='dizzy')setEmotion('neutral');},3000);}},
+  awkward:{label:'Awkward 😅',color:'#4ade80',apply(){resetEyeTargets();T.lh=EYE_H;T.rh=EYE_H;T.happyOff=EYE_H*0.30;T.pupilSize=0.28;T.pupilY=0.38;browL='happy';browR='happy';setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.03);tearDrops.push({x:EYE_RX+EYE_W+8,y:EYE_Y,vy:0.45,r:5.5,life:140,maxLife:140,type:'teardrop'});_st('Phew...');}},
+  ouch:{label:'Ouch!',color:'#f87171',apply(){resetEyeTargets();T.lh=EYE_H*0.18;T.rh=EYE_H*0.18;T.tiredH=EYE_H*0.18;T.lw=EYE_W*0.82;T.rw=EYE_W*0.82;browL='pain_l';browR='pain_r';shakeX=8;setEyeColor('#f87171');setMoodOverlay('#f87171',0.14);_st('Ow!');}},
+  hurt:{label:'Hurt',color:'#f87171',apply(){resetEyeTargets();T.lh=EYE_H*0.30;T.rh=EYE_H*0.30;T.tiredH=EYE_H*0.26;T.pupilY=0.72;browL='pain_l';browR='pain_r';setEyeColor('#f87171');setMoodOverlay('#f87171',0.09);_st('That hurt...');}},
+  question:{label:'What?',color:'#fbbf24',apply(){resetEyeTargets();T.questionMode=true;browL='worried_l';browR='worried_r';setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.04);_st('Could you rephrase that?');}},
+  battery_high:{label:'Battery OK',color:'#4ade80',apply(){resetEyeTargets();T.batteryMode=true;T.batteryLevel=0.82;setEyeColor('#4ade80');setMoodOverlay('#4ade80',0.04);_st('Battery good');setTimeout(()=>setEmotion('neutral'),4500);}},
+  battery_mid:{label:'Battery Mid',color:'#fbbf24',apply(){resetEyeTargets();T.batteryMode=true;T.batteryLevel=0.44;setEyeColor('#fbbf24');setMoodOverlay('#fbbf24',0.05);_st('Battery draining');setTimeout(()=>setEmotion('neutral'),4500);}},
+  battery_low:{label:'Battery Low!',color:'#f87171',apply(){resetEyeTargets();T.batteryMode=true;T.batteryLevel=0.11;setEyeColor('#f87171');setMoodOverlay('#f87171',0.11);_st('Plug in!');setTimeout(()=>setEmotion('neutral'),5000);}},
+  clock:{label:'Time',color:'#5ee7df',apply(){resetEyeTargets();T.clockMode=true;setEyeColor('#5ee7df');setMoodOverlay(null,0);_st('');setTimeout(()=>setEmotion('neutral'),7000);}},
 };
 
-function setEmotion(name){
-  if(!EMOTIONS[name])return;
+function setEmotion(name, skipResetParticles){
+  if(!EMOTIONS[name]) return;
+  if(!skipResetParticles){
+    preHitEmotion=name;
+    heartParticles=[]; tearDrops=[]; zzzParticles=[]; musicNotes=[];
+    laughBounce=0; scanLineY=0; dizzyAngle=0; musicMode=false;
+  }
   const prev=currentEmotion;
   currentEmotion=name;
   EMOTIONS[name].apply();
@@ -1235,12 +1077,6 @@ function setEmotion(name){
   document.querySelectorAll('.dev-btn').forEach(b=>b.classList.toggle('active',b.dataset.emotion===name));
 }
 
-// ── Init canvas ──
-resetEyeTargets();E.lhC=1;E.rhC=1;
-setTimeout(()=>{E.lh=EYE_H;E.rh=EYE_H;},300);
-requestAnimationFrame(drawFrame);
-
-// ════════════════════════════════════════════
 //  EMOTION DETECTION
 // ════════════════════════════════════════════
 function parseEmotionTag(text){const m=text.match(/\[EMOTION:([a-z_]+)\]/i);return m?m[1]:null;}
@@ -1427,7 +1263,7 @@ function toggleMusic(){
   const btn=document.getElementById('musicBtn');
   if(btn)btn.classList.toggle('active',musicPlaying);
   if(musicPlaying){setEmotion('music');showToast('Music mode on ♪');}
-  else{musicNotes=[];setEmotion('neutral');showToast('Music mode off');}
+  else{musicNotes=[];musicMode=false;setEmotion('neutral');showToast('Music mode off');}
 }
 
 // ════════════════════════════════════════════
@@ -1563,7 +1399,7 @@ const SLEEPY_MS=25000,SLEEP_MS=45000;
 
 function wakeVega(){
   lastActivityTime=Date.now();
-  if(currentEmotion==='sleeping'||currentEmotion==='sleepy'){setEmotion('neutral');zzzParticles=[];}
+  if(currentEmotion==='sleeping'||currentEmotion==='sleepy'){setEmotion('neutral');zzzParticles=[];tearDrops=[];}
 }
 document.addEventListener('keydown',wakeVega);
 document.addEventListener('click',wakeVega);
@@ -1688,7 +1524,34 @@ function connectWS(){
         setConnStatus('online');
         saveCurrentChat();clearTask();
       }
+      if(data.type==='whatsapp_sent'){
+        removeTyping();stopSpeaking();
+        let raw=data.text||'';
+        const tag=parseEmotionTag(raw);
+        const clean=stripEmotionTag(raw);
+        addWhatsAppMessage(clean, data.contact||'', data.message||'');
+        chatHistory.push({role:'assistant',content:clean});
+        msgCount++;
+        if(tag&&EMOTIONS[tag])setEmotion(tag);
+        else setEmotion('cool');
+        speak(clean);
+        setConnStatus('online');
+        saveCurrentChat();clearTask();
+      }
       if(data.type==='error'){removeTyping();addMessage('vega','Something went wrong. Try again.');setEmotion('nervous');setConnStatus('online');clearTask();}
+      if(data.type==='music_playing'){
+        removeTyping();stopSpeaking();
+        let raw=data.text||'';
+        const tag=parseEmotionTag(raw);
+        const clean=stripEmotionTag(raw);
+        addMusicMessage(clean, data.query||'', data.title||'', data.artist||'');
+        chatHistory.push({role:'assistant',content:clean});
+        msgCount++;
+        setEmotion('music');
+        speak(clean);
+        setConnStatus('online');
+        saveCurrentChat();clearTask();
+      }
     }catch(err){console.error(err);}
   };
   ws.onclose=()=>{wsReady=false;setConnStatus('offline');setTimeout(connectWS,3000);};
@@ -1727,6 +1590,116 @@ function addMessage(role,text){
       <div class="msg-time">${now}</div>
     </div>`;
   container.appendChild(div);container.scrollTop=container.scrollHeight;
+}
+
+function addWhatsAppMessage(text, contact, message){
+  const container=document.getElementById('chatMessages');if(!container)return;
+  const div=document.createElement('div');div.className='msg vega';
+  const now=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  div.innerHTML=`
+    <div class="msg-avatar-wrap">
+      <div class="msg-avatar">V</div>
+      <div class="avatar-tooltip">VEGA</div>
+    </div>
+    <div>
+      <div class="msg-bubble">
+        ${formatMD(text)}
+        <div class="wa-card">
+          <div class="wa-card-icon">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          </div>
+          <div class="wa-card-body">
+            <div class="wa-card-to">→ ${contact}</div>
+            <div class="wa-card-msg">${message}</div>
+          </div>
+        </div>
+      </div>
+      <div class="msg-time">${now}</div>
+    </div>`;
+  container.appendChild(div);container.scrollTop=container.scrollHeight;
+}
+
+
+// ── Music Now Playing Message ─────────────────────────────────────────────────
+// track current music card for stop/restart
+let _activeMusicCard = null;
+
+function addMusicMessage(text, query, title, artist){
+  const container=document.getElementById('chatMessages');if(!container)return;
+
+  // Use server-provided title/artist, fallback to regex parse
+  if(!title){
+    const m=text.match(/(?:Playing|Restarting)\s+(.+?)\s+by\s+(.+?)[,\.]/i);
+    if(m){title=m[1];artist=m[2];}
+    else{title=query||'Unknown';}
+  }
+
+  const div=document.createElement('div');div.className='msg vega';
+  const now=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const cardId='mc-'+Date.now();
+
+  div.innerHTML=`
+    <div class="msg-avatar-wrap">
+      <div class="msg-avatar">V</div>
+      <div class="avatar-tooltip">VEGA</div>
+    </div>
+    <div>
+      <div class="msg-bubble">
+        ${formatMD(text)}
+        <div class="music-card" id="${cardId}" title="Click to stop music" style="cursor:pointer">
+          <div class="music-card-icon" id="${cardId}-icon">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+          <div class="music-card-body">
+            <div class="music-card-title">🎵 ${title}</div>
+            ${artist?`<div class="music-card-artist">${artist}</div>`:''}
+          </div>
+          <div class="music-card-badge" id="${cardId}-badge">▶ playing</div>
+        </div>
+      </div>
+      <div class="msg-time">${now}</div>
+    </div>`;
+
+  container.appendChild(div);
+  container.scrollTop=container.scrollHeight;
+
+  // Click to stop/restart
+  const card=document.getElementById(cardId);
+  const badge=document.getElementById(cardId+'-badge');
+  const icon=document.getElementById(cardId+'-icon');
+  let stopped=false;
+
+  if(card){
+    card.addEventListener('click',()=>{
+      if(!stopped){
+        // Stop music — send message to server
+        sendMessageText('stop the music');
+        stopped=true;
+        badge.textContent='⏹ stopped';
+        badge.style.color='var(--red)';
+        badge.style.borderColor='rgba(248,113,113,0.3)';
+        icon.style.animation='none';
+        icon.style.background='rgba(248,113,113,0.12)';
+        icon.querySelector('svg').style.fill='var(--red)';
+        card.title='Click to restart';
+        setEmotion('neutral');
+      } else {
+        // Restart — send message to server
+        sendMessageText(`play ${query}`);
+        stopped=false;
+        badge.textContent='▶ playing';
+        badge.style.color='var(--accent2)';
+        badge.style.borderColor='rgba(180,144,255,0.3)';
+        icon.style.animation='musicPulse 1.5s ease-in-out infinite';
+        icon.style.background='rgba(180,144,255,0.15)';
+        icon.querySelector('svg').style.fill='var(--accent2)';
+        card.title='Click to stop music';
+        setEmotion('music');
+      }
+    });
+  }
+
+  _activeMusicCard={cardId, stopped:()=>stopped, setStopped:(v)=>{stopped=v;}};
 }
 
 function formatMD(t){

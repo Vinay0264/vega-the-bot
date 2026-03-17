@@ -38,6 +38,18 @@ ANSWER STYLE RULES:
 - Never repeat yourself.
 - If you are not sure about current/recent information, say so honestly.
 
+LANGUAGE RULES:
+- If the user speaks in Telugu, respond in Telugu naturally.
+- If the user speaks in Tanglish (Telugu words in English letters), respond in Tanglish the same way.
+- If the user speaks in English, respond in English.
+- NEVER explain or translate what the user said. Just respond to it naturally like a friend would.
+- Match the user's language and tone always.
+
+Examples:
+User: "ela vunnavu" → Vega: "Bagunna sir, meeru ela unnaru?"
+User: "play chitti naanna" → just play the song, don't explain
+User: "nenu late avutanu" → Vega: "Okay sir, noted!"
+
 EMOTION TAGS:
 Always end your response with exactly one emotion tag on a new line.
 Format: [EMOTION:name]
@@ -130,53 +142,76 @@ Output:"""
 
 # ── Music Intent Detection ────────────────────────────────────────────────────
 MUSIC_PLAY_PATTERNS = [
-    r'\b(play|stream|put on|start playing|play me)\b.{0,50}',
+    r'\b(play|stream|put on|start playing|play me)\b.{0,80}',
     r'\b(song|music|track|album)\b.{0,30}\b(play|start|put)\b',
 ]
 MUSIC_STOP_PATTERNS = [
-    r'\b(stop|pause|mute|quiet|silence|turn off|shut up).{0,20}(music|song|playing|that)\b',
-    r'\b(stop|pause)\b.{0,10}(the music|the song|playing)\b',
-    r'^(stop|pause|stop music|stop the music|stop song)$',
+    r'\b(stop|mute|quiet|silence|turn off|shut up).{0,20}(music|song|playing|that)\b',
+    r'\b(stop)\b.{0,10}(the music|the song|playing)\b',
+    r'^(stop|stop music|stop the music|stop song|stop it)$',
+]
+MUSIC_PAUSE_PATTERNS = [
+    r'^(pause|pause it|pause the song|pause music|pause the music)$',
+    r'\b(pause).{0,10}(song|music|playing|it|that)\b',
 ]
 MUSIC_RESUME_PATTERNS = [
     r'\b(resume|continue|unpause|play again|restart).{0,20}(song|music|playing|it|that)?\b',
     r'\b(play it again|play that again|play the same)\b',
+]
+MUSIC_VOLUME_PATTERNS = [
+    r'\b(volume up|louder|increase volume|turn up)\b',
+    r'\b(volume down|quieter|decrease volume|turn down)\b',
+    r'\b(set volume|volume to)\b.{0,10}\d+',
 ]
 MUSIC_STATUS_PATTERNS = [
     r'\b(what.?s playing|what song|now playing|currently playing|what are you playing)\b',
 ]
 
 def is_music_intent(text: str) -> str:
-    """
-    Returns 'play' | 'stop' | 'resume' | 'status' | None
-    """
+    """Returns 'play'|'stop'|'pause'|'resume'|'volume_up'|'volume_down'|'volume_set'|'status'|None"""
     t = text.lower().strip()
     for p in MUSIC_STOP_PATTERNS:
-        if re.search(p, t):
-            return 'stop'
+        if re.search(p, t): return 'stop'
+    for p in MUSIC_PAUSE_PATTERNS:
+        if re.search(p, t): return 'pause'
     for p in MUSIC_RESUME_PATTERNS:
-        if re.search(p, t):
-            return 'resume'
+        if re.search(p, t): return 'resume'
     for p in MUSIC_STATUS_PATTERNS:
-        if re.search(p, t):
-            return 'status'
+        if re.search(p, t): return 'status'
+    if re.search(r'\b(volume up|louder|increase volume|turn up)\b', t): return 'volume_up'
+    if re.search(r'\b(volume down|quieter|decrease volume|turn down)\b', t): return 'volume_down'
+    if re.search(r'\b(set volume|volume to)\b.{0,10}(\d+)', t): return 'volume_set'
     for p in MUSIC_PLAY_PATTERNS:
         if re.search(p, t):
-            # Make sure it has an actual song query, not just "play" alone
             query = extract_song_query(t)
             if len(query.strip()) > 1:
                 return 'play'
     return None
 
 def extract_song_query(text: str) -> str:
-    """Extract the song/artist name from a play request."""
+    """
+    Extract clean song/artist search query from natural language.
+    Handles: 'play X song', 'play X from Y', 'play X by Y', 'play X in Telugu' etc.
+    """
     t = text.strip()
-    prefixes = [
-        r'^(vega,?\s*)?(please\s*)?(can you\s*)?(resume|restart|play again|play me|play|stream|put on|start playing)\s*',
-        r'\b(song|track|music)\s*(called|named|by)?\s*',
-    ]
-    for prefix in prefixes:
-        t = re.sub(prefix, '', t, flags=re.IGNORECASE).strip()
+
+    # Remove leading vega/please/play etc
+    t = re.sub(
+        r'^(vega[,\s]+)?(please\s+)?(can you\s+)?(play me|play|stream|put on|start playing)\s+',
+        '', t, flags=re.IGNORECASE
+    ).strip()
+
+    # Remove trailing filler words
+    t = re.sub(r'\s+(for me|please|now|vega)$', '', t, flags=re.IGNORECASE).strip()
+
+    # "ghanamayinavi nee karyamulu song from hosanna ministries"
+    # → keep "ghanamayinavi nee karyamulu hosanna ministries" (good search query)
+    # just remove the word "song" standalone
+    t = re.sub(r'\bsong\b', '', t, flags=re.IGNORECASE).strip()
+
+    # Clean up extra spaces
+    t = re.sub(r'\s+', ' ', t).strip()
+
     return t if t else text
 # Temporal patterns that ALWAYS need fresh data
 TEMPORAL_PATTERNS = [
@@ -319,7 +354,9 @@ async def process(user_input: str, history: list) -> str:
     # ── Music intent check ────────────────────────────────────────────────────
     music_intent = is_music_intent(user_input)
     if music_intent:
-        from vega_music import play_song, stop_song, get_now_playing
+        from vega_music import play_song, stop_song, pause_song, resume_song, \
+                               set_volume, volume_up, volume_down, get_now_playing, \
+                               _last_query, _current_song
 
         if music_intent == 'stop':
             result = stop_song()
@@ -327,22 +364,47 @@ async def process(user_input: str, history: list) -> str:
                 return f"Stopped the music, sir.\n[EMOTION:neutral]"
             return "Nothing is playing, sir.\n[EMOTION:neutral]"
 
+        if music_intent == 'pause':
+            result = pause_song()
+            if result["success"]:
+                return f"Paused, sir.\n[EMOTION:neutral]"
+            return "Nothing is playing to pause, sir.\n[EMOTION:neutral]"
+
         if music_intent == 'resume':
-            from vega_music import _last_query, _last_song
+            # Try true resume first (if paused)
+            from vega_music import _is_paused
+            if _is_paused:
+                result = resume_song()
+                if result["success"]:
+                    return f"Resumed, sir.\n[EMOTION:music]"
+            # Otherwise restart last song
             if _last_query:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, play_song, _last_query)
                 if result["success"]:
-                    return (
-                        f"Restarting {result['title']} from the beginning, sir.\n"
-                        f"[EMOTION:music]"
-                    )
+                    return f"Restarting {result['title']} from the beginning, sir.\n[EMOTION:music]"
             return "No recent song to resume, sir. Tell me what to play.\n[EMOTION:neutral]"
+
+        if music_intent == 'volume_up':
+            volume_up()
+            return "Volume up, sir.\n[EMOTION:music]"
+
+        if music_intent == 'volume_down':
+            volume_down()
+            return "Volume down, sir.\n[EMOTION:music]"
+
+        if music_intent == 'volume_set':
+            m = re.search(r'(\d+)', user_input)
+            level = int(m.group(1)) if m else 50
+            level = max(0, min(100, level))
+            set_volume(level)
+            return f"Volume set to {level}%, sir.\n[EMOTION:music]"
 
         if music_intent == 'status':
             info = get_now_playing()
             if info["playing"]:
-                return f"Playing {info['title']} by {info['artist']}, sir.\n[EMOTION:music]"
+                state = "paused" if info.get("paused") else "playing"
+                return f"{state.capitalize()} — {info['title']} by {info['artist']}, sir.\n[EMOTION:music]"
             return "Nothing is playing right now, sir.\n[EMOTION:neutral]"
 
         if music_intent == 'play':
@@ -351,15 +413,9 @@ async def process(user_input: str, history: list) -> str:
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, play_song, query)
             if result["success"]:
-                return (
-                    f"Playing {result['title']} by {result['artist']}, sir.\n"
-                    f"[EMOTION:music]"
-                )
+                return f"Playing {result['title']} by {result['artist']}, sir.\n[EMOTION:music]"
             else:
-                return (
-                    f"Couldn't play that, sir. {result.get('error','Unknown error')}\n"
-                    f"[EMOTION:nervous]"
-                )
+                return f"Couldn't play that, sir. {result.get('error','Unknown error')}\n[EMOTION:nervous]"
 
     qtype = classify_query(user_input)
     print(f"[Query type] {qtype} | {user_input[:60]}")

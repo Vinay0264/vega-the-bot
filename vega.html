@@ -411,6 +411,7 @@ let lastBlinkTs = 0, nextBlinkMs = 3000;
 let heartParticles = [], tearDrops = [], zzzParticles = [], musicNotes = [];
 let musicTimer = 0, musicMode = false;
 let musicPlaying = false; // for toggleMusic compat
+let _vegaMusicOn  = false; // true while Vega is streaming a song
 
 // ── Animation state ──
 let laughBounce = 0, laughPhase = 0;
@@ -1062,6 +1063,9 @@ const EMOTIONS={
 
 function setEmotion(name, skipResetParticles){
   if(!EMOTIONS[name]) return;
+  // ── Music protection: don't override music vibe with low-priority emotions ──
+  const MUSIC_OVERRIDE_BLOCK = new Set(['thinking','neutral','listening','working','chilling']);
+  if(_vegaMusicOn && MUSIC_OVERRIDE_BLOCK.has(name)) return;
   if(!skipResetParticles){
     preHitEmotion=name;
     heartParticles=[]; tearDrops=[]; zzzParticles=[]; musicNotes=[];
@@ -1811,6 +1815,8 @@ function selectLang(btn){
 // ── Voice Input (STT) — stays ON until manually stopped ──
 let recognition=null,micActive=false,micPaused=false;
 let micRestartTimer=null;
+let silenceSendTimer=null;   // waits for pause before sending
+let accumulatedText='';      // builds up full sentence across finals
 
 function setupSpeech(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -1822,19 +1828,28 @@ function setupSpeech(){
   recognition.maxAlternatives=1;
 
   recognition.onresult=e=>{
-    if(micPaused) return; // ignore input while Vega is speaking
+    if(micPaused) return;
     let interim='',final='';
     for(let i=e.resultIndex;i<e.results.length;i++){
       if(e.results[i].isFinal) final+=e.results[i][0].transcript;
       else interim+=e.results[i][0].transcript;
     }
     const inp=document.getElementById('vegaInput')||document.getElementById('chatInput');
-    if(inp){inp.value=final||interim;if(inp.id==='vegaInput')autoResizeVega(inp);else autoResize(inp);}
+    // Show live preview in input box
+    if(inp){
+      inp.value=(accumulatedText+' '+final+interim).trim();
+      if(inp.id==='vegaInput') autoResizeVega(inp); else autoResize(inp);
+    }
     if(final.trim()){
-      const text=final.trim();
-      // Clear input and send
-      if(inp) inp.value='';
-      sendMessageText(text);
+      accumulatedText=(accumulatedText+' '+final.trim()).trim();
+      // Reset silence timer — send only after 2.5s of silence
+      clearTimeout(silenceSendTimer);
+      silenceSendTimer=setTimeout(()=>{
+        const toSend=accumulatedText.trim();
+        accumulatedText='';
+        if(inp) inp.value='';
+        if(toSend) sendMessageText(toSend);
+      },2500);
     }
   };
 
@@ -1884,6 +1899,8 @@ function startMic(){
 
 function stopMic(){
   clearTimeout(micRestartTimer);
+  clearTimeout(silenceSendTimer);
+  accumulatedText='';
   micActive=false;micPaused=false;
   if(recognition){try{recognition.stop();}catch(e){}}
   document.getElementById('micBtn')?.classList.remove('mic-active');
@@ -1895,6 +1912,8 @@ function stopMic(){
 function pauseMicForTTS(){
   if(!micActive) return;
   micPaused=true;
+  clearTimeout(silenceSendTimer);
+  accumulatedText='';
   if(recognition){try{recognition.stop();}catch(e){}}
 }
 

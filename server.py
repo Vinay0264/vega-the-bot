@@ -1,8 +1,24 @@
 """
 server.py — VEGA
-FastAPI WebSocket bridge + Chat Storage API.
-Local chat storage in project folder (chats.json).
-Zero AI logic here.
+═══════════════════════════════════════════════════════════════════
+Pure WebSocket bridge + Chat Storage API.
+Zero AI logic here. Zero routing logic here.
+All decisions happen in brain.py and classifier.py.
+
+RESPONSIBILITIES:
+  - Serve vega.html
+  - Handle WebSocket connection per client
+  - Pass user input to brain.process()
+  - Send response back to client
+  - Detect special response types for rich UI cards
+  - Store/load/delete chat history files
+  - Compress conversation history when it grows large
+
+SPECIAL RESPONSE TYPES (detected from response text):
+  whatsapp_sent  — response contains [EMOTION:cool] after a whatsapp intent
+  music_playing  — response contains [EMOTION:music] after a play/resume intent
+  response       — everything else
+═══════════════════════════════════════════════════════════════════
 """
 
 import os
@@ -19,8 +35,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
+# ── Config ────────────────────────────────────────────────────────────────────
 _groq       = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 MODEL_LIGHT = "llama-3.1-8b-instant"
 HOST        = os.getenv("HOST", "localhost")
@@ -28,110 +50,174 @@ PORT        = int(os.getenv("PORT", 2004))
 USER_NAME   = os.getenv("USER_NAME",  "Vinay")
 AGENT_NAME  = os.getenv("AGENT_NAME", "Vega")
 
-# ── Track connected WebSocket clients ─────────────────────────────────────────
+# ── Connected clients ─────────────────────────────────────────────────────────
 connected_clients: list = []
 
-# ── Chat storage path ─────────────────────────────────────────────────────────
-CHATS_FILE = Path(__file__).parent / "chats.json"
+# ══════════════════════════════════════════════════════════════════════════════
+#  CHAT STORAGE — one .json file per chat in chat_history/
+# ══════════════════════════════════════════════════════════════════════════════
+CHATS_DIR = Path(__file__).parent / "chat_history"
+CHATS_DIR.mkdir(exist_ok=True)
+
+
+def _safe_title(title: str) -> str:
+    """Sanitize chat title for use as a filename."""
+    safe = "".join(c for c in title if c.isalnum() or c in " _-").strip()
+    return safe[:80] or "chat"
+
+
+def _find_chat_file(chat_id: str) -> Path | None:
+    """Find the .json file that belongs to a given chat ID."""
+    for f in CHATS_DIR.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("id") == chat_id:
+                return f
+        except Exception:
+            pass
+    return None
+
 
 def load_chats() -> dict:
-    if CHATS_FILE.exists():
+    """Load all chats from chat_history/."""
+    result = {}
+    for f in CHATS_DIR.glob("*.json"):
         try:
-            return json.loads(CHATS_FILE.read_text(encoding="utf-8"))
-        except:
-            return {}
-    return {}
+            data = json.loads(f.read_text(encoding="utf-8"))
+            result[data["id"]] = data
+        except Exception:
+            pass
+    return result
 
-def save_chats(data: dict):
-    CHATS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-# ── Chat API endpoints ────────────────────────────────────────────────────────
+def save_chat_file(chat: dict):
+    """
+    Save chat as chat_history/<title>.json.
+    Deletes old file first if title changed.
+    """
+    old_file = _find_chat_file(chat["id"])
+    if old_file:
+        old_file.unlink(missing_ok=True)
+    filename = f"{_safe_title(chat.get('title', 'chat'))}.json"
+    (CHATS_DIR / filename).write_text(
+        json.dumps(chat, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+
+def delete_chat_file(chat_id: str):
+    """Delete the file that belongs to a given chat ID."""
+    f = _find_chat_file(chat_id)
+    if f:
+        f.unlink(missing_ok=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CHAT API ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
 @app.get("/chats")
 async def get_chats():
     return JSONResponse(load_chats())
 
+
 @app.post("/chats/{chat_id}")
 async def save_chat(chat_id: str, request_body: dict):
-    """Save or update a single chat."""
-    chats = load_chats()
-    chats[chat_id] = request_body
-    save_chats(chats)
+    save_chat_file(request_body)
     return {"ok": True}
+
 
 @app.delete("/chats/{chat_id}")
 async def delete_chat(chat_id: str):
-    """Delete a single chat."""
-    chats = load_chats()
-    if chat_id in chats:
-        del chats[chat_id]
-        save_chats(chats)
-        return {"ok": True}
-    return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    delete_chat_file(chat_id)
+    return {"ok": True}
+
 
 @app.delete("/chats")
 async def delete_all_chats():
-    save_chats({})
+    for f in CHATS_DIR.glob("*.json"):
+        f.unlink(missing_ok=True)
     return {"ok": True}
 
-# ── History compression ───────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  HISTORY COMPRESSION
+#  Keeps context window lean as conversations grow.
+#  Compresses old messages into a single summary — keeps last 6 raw.
+# ══════════════════════════════════════════════════════════════════════════════
 RAW_WINDOW     = 6
 COMPRESS_AFTER = 10
 _compression_cache: dict = {"compressed": None, "older_len": -1}
 
+
 async def compress_history(history: list) -> list:
     global _compression_cache
+
     if len(history) <= COMPRESS_AFTER:
         _compression_cache = {"compressed": None, "older_len": -1}
         return history
+
     older  = history[:-RAW_WINDOW]
     recent = history[-RAW_WINDOW:]
-    if (_compression_cache["compressed"] is not None
-            and _compression_cache["older_len"] == len(older)):
+
+    # Return cached compression if older portion hasn't changed
+    if (
+        _compression_cache["compressed"] is not None
+        and _compression_cache["older_len"] == len(older)
+    ):
         return _compression_cache["compressed"] + recent
+
     older_text = "\n".join([
-        f"{'User' if m['role']=='user' else 'VEGA'}: {m['content']}"
+        f"{'User' if m['role'] == 'user' else 'VEGA'}: {m['content']}"
         for m in older
     ])
+
     try:
         response = await _groq.chat.completions.create(
             model=MODEL_LIGHT,
             messages=[
-                {"role":"system","content":(
+                {"role": "system", "content": (
                     "Summarize this conversation in 2-3 sentences.\n"
                     "Cover: main topics, decisions, important context.\n"
                     "Past tense. Factual. No filler."
                 )},
-                {"role":"user","content":older_text}
+                {"role": "user", "content": older_text}
             ],
-            temperature=0.0, max_tokens=120,
+            temperature=0.0,
+            max_tokens=120,
         )
         summary     = response.choices[0].message.content.strip()
-        summary_msg = [{"role":"system","content":f"Earlier in this conversation: {summary}"}]
+        summary_msg = [{"role": "system", "content": f"Earlier in this conversation: {summary}"}]
+
         _compression_cache["compressed"] = summary_msg
         _compression_cache["older_len"]  = len(older)
         print(f"[History] Compressed {len(older)} msgs → 1 summary.")
         return summary_msg + recent
+
     except Exception as e:
         print(f"[Compression error] {e}")
         return recent
 
-# ── HTML serving ──────────────────────────────────────────────────────────────
-def load_html() -> str:
+# ══════════════════════════════════════════════════════════════════════════════
+#  HTML + STATIC SERVING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _load_html() -> str:
     html_path = Path(__file__).parent / "vega.html"
     html = html_path.read_text(encoding="utf-8")
     html = html.replace("{{ USER_NAME }}",  USER_NAME)
     html = html.replace("{{ AGENT_NAME }}", AGENT_NAME)
     return html
 
+
 @app.get("/")
 async def root():
-    return HTMLResponse(load_html())
+    return HTMLResponse(_load_html())
+
 
 @app.get("/health")
 async def health():
-    return {"status":"online","agent":"VEGA","port":PORT}
+    return {"status": "online", "agent": "VEGA", "port": PORT}
 
-# ── Serve vega-eyes.js and any other local .js files ─────────────────────────
+
 @app.get("/{filename}.js")
 async def serve_js(filename: str):
     path = Path(__file__).parent / f"{filename}.js"
@@ -139,13 +225,41 @@ async def serve_js(filename: str):
         return FileResponse(path, media_type="application/javascript")
     return JSONResponse({"error": "not found"}, status_code=404)
 
-# ── WebSocket ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  RESPONSE TYPE DETECTION
+#  Determines which UI card to show based on response content.
+#  No routing logic — just reads what brain.py already decided.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_response_type(response_text: str, last_intent: str) -> str:
+    """
+    Returns: 'whatsapp_sent' | 'music_playing' | 'response'
+
+    Uses the intent from classifier (stored as last_intent) combined
+    with the emotion tag in the response to decide the UI card type.
+    This replaces the old is_whatsapp_intent() / is_music_intent() calls.
+    """
+    if last_intent == "whatsapp" and "[EMOTION:cool]" in response_text:
+        return "whatsapp_sent"
+    if last_intent == "music_play" and "[EMOTION:music]" in response_text:
+        return "music_playing"
+    if last_intent == "music_control" and "[EMOTION:music]" in response_text:
+        # resume also shows music card
+        return "music_playing"
+    return "response"
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  WEBSOCKET — main real-time bridge
+# ══════════════════════════════════════════════════════════════════════════════
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_clients.append(websocket)
-    history: list = []
+    history: list     = []
+    last_intent: str  = "general"  # tracks last classified intent for card detection
 
+    # Time-based greeting
     hour = datetime.now().hour
     if hour >= 22 or hour < 5:
         greeting = "VEGA online."
@@ -156,53 +270,68 @@ async def websocket_endpoint(websocket: WebSocket):
     else:
         greeting = "VEGA online. Good morning, sir."
 
-    await websocket.send_json({"type":"response","text":greeting})
+    await websocket.send_json({"type": "response", "text": greeting})
 
     try:
         while True:
+            # Wait for message — ping client if idle for 30s
             try:
                 data = await asyncio.wait_for(websocket.receive_json(), timeout=30)
             except asyncio.TimeoutError:
-                await websocket.send_json({"type":"ping"})
+                await websocket.send_json({"type": "ping"})
                 continue
 
-            msg_type = data.get("type","message")
-            if msg_type == "pong":
+            if data.get("type") == "pong":
                 continue
 
-            user_input = data.get("text","").strip()
+            user_input = data.get("text", "").strip()
             if not user_input:
                 continue
 
-            compressed = await compress_history(history)
+            # Classify intent first — needed for card detection later
+            from classifier import classify
+            classification = await classify(user_input)
+            last_intent    = classification["intent"]
 
-            from brain import process, is_whatsapp_intent, extract_whatsapp_details, is_music_intent, extract_song_query
+            # Compress history, then process
+            compressed    = await compress_history(history)
+            from brain import process
             response_text = await process(user_input, compressed)
 
+            # Empty response means frontend handled it locally — do nothing
+            if not response_text:
+                continue
+
+            # Update history
             history.append({"role": "user",      "content": user_input})
             history.append({"role": "assistant",  "content": response_text})
             if len(history) > 60:
                 history = history[-40:]
 
-            # WhatsApp sent — special card
-            if is_whatsapp_intent(user_input) and "[EMOTION:cool]" in response_text:
-                details = await extract_whatsapp_details(user_input)
+            # Determine which UI card to send
+            response_type = _get_response_type(response_text, last_intent)
+
+            if response_type == "whatsapp_sent":
+                # Extract contact/message from classification (already done — no extra API call)
+                extracted = classification.get("extracted", {})
                 await websocket.send_json({
-                    "type": "whatsapp_sent",
-                    "text": response_text,
-                    "contact": details.get("contact", ""),
-                    "message": details.get("message", "")
+                    "type":    "whatsapp_sent",
+                    "text":    response_text,
+                    "contact": extracted.get("contact", ""),
+                    "message": extracted.get("message", ""),
                 })
-            # Music playing — special card (play OR resume)
-            elif "[EMOTION:music]" in response_text and is_music_intent(user_input) in ('play', 'resume'):
-                from vega_music import _last_query, _current_song, _current_artist
+
+            elif response_type == "music_playing":
+                from music import get_now_playing, get_last_query
+                info = get_now_playing()
                 await websocket.send_json({
-                    "type": "music_playing",
-                    "text": response_text,
-                    "query": _last_query,
-                    "title": _current_song,
-                    "artist": _current_artist,
+                    "type":   "music_playing",
+                    "text":   response_text,
+                    "query":  get_last_query(),
+                    "title":  info.get("title", ""),
+                    "artist": info.get("artist", ""),
                 })
+
             else:
                 await websocket.send_json({"type": "response", "text": response_text})
 
@@ -210,16 +339,19 @@ async def websocket_endpoint(websocket: WebSocket):
         print("[WS] Client disconnected.")
         if websocket in connected_clients:
             connected_clients.remove(websocket)
+
     except Exception as e:
         print(f"[WS error] {e}")
         if websocket in connected_clients:
             connected_clients.remove(websocket)
         try:
-            await websocket.send_json({"type":"error","text":"Something went wrong."})
-        except:
+            await websocket.send_json({"type": "error", "text": "Something went wrong."})
+        except Exception:
             pass
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     import uvicorn
     print(f"\n  VEGA running → http://{HOST}:{PORT}\n")

@@ -12,7 +12,7 @@
   --bd:rgba(255,255,255,0.06);--bd2:rgba(255,255,255,0.10);--bd3:rgba(255,255,255,0.18);
   --accent:#5ee7df;--accent2:#b490ff;--accent3:#ff6eb0;
   --ad:rgba(94,231,223,0.18);--ag:rgba(94,231,223,0.06);
-  --t1:#e8edf8;--t2:#7a8aaa;--t3:#3a4a68;
+  --t1:#e8edf8;--t2:#a4b2cd;--t3:#a4aec1;
   --green:#4ade80;--amber:#fbbf24;--red:#f87171;--pink:#f472b6;--blue:#60a5fa;
   --mono:'JetBrains Mono',monospace;--ui:'Space Grotesk',sans-serif;--display:'Syne',sans-serif;
   --r:8px;--r2:14px;
@@ -40,7 +40,7 @@ input,textarea{font-family:inherit;outline:none;border:none;background:none}
 
 /* panel header */
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--bd);flex-shrink:0;min-height:38px;background:var(--bg2)}
-.panel-title{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--t2);white-space:nowrap}
+.panel-title{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--t2);white-space:nowrap}
 .panel-actions{display:flex;gap:3px;align-items:center;flex-shrink:0}
 .ph-btn{width:21px;height:21px;border-radius:5px;background:transparent;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;color:var(--t3);transition:all 0.15s;font-size:10px;flex-shrink:0}
 .ph-btn:hover{background:var(--bg4);color:var(--t1);border-color:var(--bd2)}
@@ -233,10 +233,21 @@ input,textarea{font-family:inherit;outline:none;border:none;background:none}
         <button class="ph-btn" onclick="collapsePanel('panel-history')"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     </div>
+        <!-- Select-mode action bar (hidden by default) -->
+    <div id="selectBar" style="display:none;padding:5px 11px;background:var(--bg3);border-bottom:1px solid var(--bd);display:none;align-items:center;gap:6px;">
+      <span id="selectCount" style="font-size:11px;color:var(--t3);font-family:var(--mono);flex:1">0 selected</span>
+      <button onclick="selectAllChats()" style="font-size:10px;padding:2px 7px;border-radius:4px;background:var(--bg4);border:1px solid var(--bd);color:var(--t2);cursor:pointer">All</button>
+      <button onclick="deleteSelected()" style="font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(248,113,113,0.15);border:1px solid var(--red);color:var(--red);cursor:pointer">Delete</button>
+      <button onclick="toggleSelectMode()" style="font-size:10px;padding:2px 7px;border-radius:4px;background:var(--bg4);border:1px solid var(--bd);color:var(--t3);cursor:pointer">Cancel</button>
+    </div>
+
     <div class="history-search"><input type="text" placeholder="Search chats..." id="historySearch" oninput="filterHistory(this.value)"/></div>
     <button class="history-new-btn" onclick="newChat()">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       New Chat
+    </button>
+    <button class="history-new-btn" id="deleteAllBtn" onclick="deleteAllChats()" style="display:none;background:rgba(248,113,113,0.08);border-color:var(--red);color:var(--red);margin-top:3px">
+      🗑 Delete All Chats
     </button>
     <div class="history-content" id="historyList"></div>
   </div>
@@ -1083,8 +1094,8 @@ function setEmotion(name, skipResetParticles){
 
 //  EMOTION DETECTION
 // ════════════════════════════════════════════
-function parseEmotionTag(text){const m=text.match(/\[EMOTION:([a-z_]+)\]/i);return m?m[1]:null;}
-function stripEmotionTag(text){return text.replace(/\s*\[EMOTION:[a-z_]+\]\s*$/i,'').trim();}
+function parseEmotionTag(text){ const m=text.match(/\[EMOTION:([a-z_]+)\]/i)||text.match(/\[([a-z_]+)\]\s*$/i); return m?m[1]:null; }
+function stripEmotionTag(text){ return text.replace(/\s*\[EMOTION:[a-z_]+\]\s*$/i,'').replace(/\s*\[[a-z_]+\]\s*$/i,'').trim(); }
 
 const EKW={
   happy:['happy','great','awesome','wonderful','excellent','fantastic','glad','yay','thanks','thank you'],
@@ -1504,7 +1515,7 @@ document.addEventListener('mouseup',()=>{if(resizing){document.querySelectorAll(
 //  WEBSOCKET
 // ════════════════════════════════════════════
 let ws=null,wsReady=false;
-let chatHistory=[],currentChatId=Date.now().toString(),allChats={};
+let chatHistory=[],currentChatId=null,allChats={};
 
 function connectWS(){
   setConnStatus('connecting');
@@ -1961,9 +1972,13 @@ function sendMessageText(text){
 // ════════════════════════════════════════════
 async function saveCurrentChat(){
   if(!chatHistory.length) return;
-  // Title = 2nd user message (more meaningful than first)
   const userMsgs=chatHistory.filter(m=>m.role==='user');
-  const title=(userMsgs[1]||userMsgs[0])?.content?.slice(0,42)||'Chat';
+  // Do NOT save until user has sent at least 2 messages
+  if(userMsgs.length < 2) return;
+  // Assign ID lazily — only on first real save
+  if(!currentChatId) currentChatId=Date.now().toString();
+  // Title = the 2nd user message (trimmed to 60 chars)
+  const title=userMsgs[1].content.slice(0,60).trim()||'Chat';
   const chat={id:currentChatId,title,messages:chatHistory.slice(),ts:Date.now()};
   allChats[currentChatId]=chat;
   try{
@@ -1997,6 +2012,11 @@ function renderHistoryList(filter=''){
   const list=document.getElementById('historyList');if(!list)return;list.innerHTML='';
   const chats=Object.values(allChats).sort((a,b)=>b.ts-a.ts)
     .filter(c=>!filter||c.title.toLowerCase().includes(filter.toLowerCase()));
+
+  // Show/hide Delete All button
+  const delAllBtn=document.getElementById('deleteAllBtn');
+  if(delAllBtn) delAllBtn.style.display=chats.length?'flex':'none';
+
   if(!chats.length){
     list.innerHTML='<div style="padding:16px;text-align:center;color:var(--t3);font-size:11px">No chats yet</div>';
     return;
@@ -2011,15 +2031,33 @@ function renderHistoryList(filter=''){
       list.appendChild(dEl);lastD=lbl;
     }
     const item=document.createElement('div');
-    item.className='history-item'+(c.id===currentChatId?' active':'');
+    const isSelected=selectedIds.has(c.id);
+    item.className='history-item'+(c.id===currentChatId?' active':'')+(isSelected?' selected':'');
+    if(isSelected) item.style.background='rgba(var(--accent-rgb,100,200,255),0.08)';
+
+    const checkHtml=selectMode
+      ? `<input type="checkbox" ${isSelected?'checked':''} style="margin-right:4px;flex-shrink:0;accent-color:var(--accent)" class="chat-chk" data-id="${c.id}">`
+      : '';
+
     item.innerHTML=`
       <div style="display:flex;align-items:center;gap:4px">
+        ${checkHtml}
         <div class="history-item-title" style="flex:1;min-width:0">${c.title}</div>
-        <button class="del-chat-btn" data-id="${c.id}" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:1px 4px;border-radius:3px;flex-shrink:0;line-height:1">✕</button>
+        ${!selectMode?`<button class="del-chat-btn" data-id="${c.id}" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:1px 4px;border-radius:3px;flex-shrink:0;line-height:1">✕</button>`:''}
       </div>
       <div class="history-item-meta">${new Date(c.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>`;
-    item.querySelector('.del-chat-btn').addEventListener('click',ev=>deleteChat(c.id,ev));
-    item.addEventListener('click',()=>loadChat(c.id));
+
+    if(!selectMode){
+      item.querySelector('.del-chat-btn').addEventListener('click',ev=>deleteChat(c.id,ev));
+      item.addEventListener('click',()=>loadChat(c.id));
+    } else {
+      item.addEventListener('click',()=>{
+        const id=c.id;
+        if(selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+        updateSelectCount();
+        renderHistoryList(filter);
+      });
+    }
     list.appendChild(item);
   });
 }
@@ -2032,12 +2070,67 @@ function loadChat(id){
   renderHistoryList();
 }
 function newChat(){
-  currentChatId=Date.now().toString();chatHistory=[];
+  currentChatId=null;chatHistory=[];
   const c=document.getElementById('chatMessages');if(c)c.innerHTML='';
   renderHistoryList();setEmotion('neutral');
   document.getElementById('vegaInput')?.focus();
 }
 function filterHistory(v){renderHistoryList(v);}
+
+// ── Select mode ──────────────────────────────
+let selectMode=false;
+const selectedIds=new Set();
+
+function toggleSelectMode(){
+  selectMode=!selectMode;
+  selectedIds.clear();
+  const bar=document.getElementById('selectBar');
+  const btn=document.getElementById('selectModeBtn');
+  if(selectMode){
+    bar.style.display='flex';
+    btn.style.color='var(--accent)';btn.style.borderColor='var(--accent)';
+  } else {
+    bar.style.display='none';
+    btn.style.color='';btn.style.borderColor='';
+  }
+  renderHistoryList();
+}
+
+function selectAllChats(){
+  Object.keys(allChats).forEach(id=>selectedIds.add(id));
+  updateSelectCount();
+  renderHistoryList();
+}
+
+function updateSelectCount(){
+  const el=document.getElementById('selectCount');
+  if(el) el.textContent=selectedIds.size+' selected';
+}
+
+async function deleteSelected(){
+  if(!selectedIds.size){showToast('Nothing selected');return;}
+  if(!confirm(`Delete ${selectedIds.size} chat(s)?`)) return;
+  for(const id of [...selectedIds]){
+    try{await fetch(`/chats/${id}`,{method:'DELETE'});}catch(e){}
+    delete allChats[id];
+  }
+  if(selectedIds.has(currentChatId)) newChat();
+  selectedIds.clear();
+  toggleSelectMode();
+  renderHistoryList();
+  showToast('Deleted ✓');
+}
+
+async function deleteAllChats(){
+  const count=Object.keys(allChats).length;
+  if(!count){showToast('No chats to delete');return;}
+  if(!confirm(`Delete all ${count} chat(s)? This cannot be undone.`)) return;
+  try{await fetch('/chats',{method:'DELETE'});}catch(e){}
+  allChats={};
+  newChat();
+  renderHistoryList();
+  showToast('All chats deleted');
+}
 
 // ════════════════════════════════════════════
 //  DEV PANEL — live preview canvas

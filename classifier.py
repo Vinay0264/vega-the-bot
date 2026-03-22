@@ -216,16 +216,15 @@ async def _llm_classify(text: str) -> str:
     One word reply. Max 5 tokens back.
     """
     prompt = (
-            "Extract the WhatsApp recipient and message from this instruction.\n"
-            "Rephrase the message as a direct text from the sender's perspective.\n"
-            "Fix spelling, grammar, and capitalisation of the message.\n"
-            "Do NOT add the contact's name inside the message.\n"
-            "Do NOT add greetings or extra words not implied by the instruction.\n"
-            "Reply in this exact format, nothing else:\n"
-            "contact: <name>\n"
-            "message: <message>\n\n"
-            f"Instruction: {text}"
-        )
+        "Classify the user's intent into exactly one word.\n"
+        "Options: search, emotional, general\n"
+        "- search: needs current info, facts, news, prices, scores, weather\n"
+        "- emotional: expressing feelings, venting, personal struggles\n"
+        "- general: everything else\n"
+        "Reply with only one word. Nothing else.\n\n"
+        f"Input: {text}"
+    )
+    
     try:
         response = await _groq.chat.completions.create(
             model=MODEL_LIGHT,

@@ -296,7 +296,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Compress history, then process
             compressed    = await compress_history(history)
             from brain import process
-            response_text = await process(user_input, compressed)
+            response_text = await process(user_input, compressed, classification)
 
             # Empty response means frontend handled it locally — do nothing
             if not response_text:

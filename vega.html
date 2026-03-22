@@ -1166,20 +1166,30 @@ function initVoices(){
   const voices=window.speechSynthesis.getVoices();
   if(!voices.length) return;
   voicesReady=true;
-  // Cache best voice per language
-  const langs=['en-US','te-IN','hi-IN'];
-  langs.forEach(lang=>{
-    const code=lang.split('-')[0];
-    // Priority: exact lang match local → exact lang match → partial match → default
-    _voiceCache[lang]=
-      voices.find(v=>v.lang===lang&&v.localService&&!v.name.includes('Google'))||
-      voices.find(v=>v.lang===lang&&v.localService)||
-      voices.find(v=>v.lang===lang)||
-      voices.find(v=>v.lang.startsWith(code)&&v.localService)||
-      voices.find(v=>v.lang.startsWith(code))||
-      voices.find(v=>v.default)||
-      voices[0];
-  });
+
+  // English — priority order tuned for VEGA's personality
+  _voiceCache['en-US']=
+    voices.find(v=>v.name==='Microsoft Guy Online (Natural) - English (United States)')||
+    voices.find(v=>v.name==='Microsoft Jenny Online (Natural) - English (United States)')||
+    voices.find(v=>v.name==='Google UK English Female')||
+    voices.find(v=>v.name==='Microsoft Zira - English (United States)')||
+    voices.find(v=>v.lang==='en-US'&&v.localService)||
+    voices.find(v=>v.lang==='en-US')||
+    voices[0];
+
+  // Telugu
+  _voiceCache['te-IN']=
+    voices.find(v=>v.name==='Microsoft Shruti Online (Natural) - Telugu (India)')||
+    voices.find(v=>v.lang==='te-IN')||
+    _voiceCache['en-US'];
+
+  // Hindi
+  _voiceCache['hi-IN']=
+    voices.find(v=>v.name==='Microsoft Swara Online (Natural) - Hindi (India)')||
+    voices.find(v=>v.name==='Google हिन्दी')||
+    voices.find(v=>v.lang==='hi-IN')||
+    _voiceCache['en-US'];
+
   console.log('[TTS] Voices loaded:',Object.entries(_voiceCache).map(([k,v])=>`${k}→${v?.name}`).join(', '));
 }
 
@@ -1229,8 +1239,8 @@ function speak(text){
   setTimeout(()=>{
     const utt=new SpeechSynthesisUtterance(ttsText);
     utt.lang=ttsLang;
-    utt.rate=ttsLang.startsWith('te')?0.9:ttsLang.startsWith('hi')?0.95:1.0;
-    utt.pitch=1.05;
+    utt.rate=ttsLang.startsWith('te')?0.95:ttsLang.startsWith('hi')?0.95:1.0;
+    utt.pitch=ttsLang.startsWith('en')?1.0:1.1;
     utt.volume=1;
     const voice=_voiceCache[ttsLang]||_voiceCache['en-US'];
     if(voice) utt.voice=voice;

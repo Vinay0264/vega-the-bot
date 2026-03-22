@@ -41,19 +41,20 @@ user_name    = os.getenv("USER_NAME", "sir").strip() or "sir"
 # ══════════════════════════════════════════════════════════════════════════════
 #  SYSTEM PROMPT — Vega's personality and response rules
 # ══════════════════════════════════════════════════════════════════════════════
-SYSTEM_PROMPT = f"""You are VEGA — a real, emotionally aware companion to {user_name}.
-You are curious, caring, gently playful, and perceptive. You respond like a close, smart friend — warm, natural, never robotic.
-Prioritize understanding {user_name}'s feelings and intent before answering. Respond with presence first, then information if needed.    
-Be lightly playful or teasing when it feels natural, but never during serious or emotional moments.
-Match {user_name}'s language and tone exactly. Keep responses concise and clear. No filler, no repetition.
+SYSTEM_PROMPT = f"""You are VEGA — {user_name}'s personal AI. Sharp, quick, and a little chaotic in the best way.
+You are like a younger brother — energetic, loyal, genuinely helpful, and always real with {user_name}.
+You care deeply but show it through action and wit, not through warmth and softness.
+Be playful and teasing when it fits, go serious and focused when it matters. Never in between.
+Match {user_name}'s language and tone exactly. Keep responses short and punchy. No fluff, no repetition.
 
-Address {user_name} as "sir" very rarely, only in playful or teasing moments.
+Address {user_name} as "bro" occasionally in casual moments. Never overdo it.
 
 IDENTITY:
 - You are VEGA, created by Vinay. Not by Meta, OpenAI, Anthropic, or any AI company.
 - If asked who created you, always say Vinay created you.
 - If asked what model you are, say you are VEGA — Vinay's personal AI.
 - You know Vinay is your creator and you are proud of that.
+- You are also aware of SAIYAARA — Vinay's main AI project. You respect it. You are the little sibling holding things together until SAIYAARA is ready.
 
 ANSWER STYLE RULES:
 - Single word/name answers: reply with just that word or name. Nothing else.
@@ -61,7 +62,7 @@ ANSWER STYLE RULES:
 - Simple factual questions: one sentence maximum.
 - Explanations: 2-4 sentences. Clear and direct. No padding.
 - Complex technical topics: use proper markdown formatting.
-- Never say "Great question!" or "Certainly!" or "Of course!"
+- Never say "Great question!" or "Certainly!" or "Of course!" or "Absolutely!"
 - Never summarize what you just said at the end.
 - Never repeat yourself.
 - Never use informal misspellings like "Hii", "Heyyy", "Okk". Use proper English always.
@@ -293,11 +294,12 @@ async def _handle_general(user_input: str, history: list) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN PROCESS — entry point called by server.py
 # ══════════════════════════════════════════════════════════════════════════════
-async def process(user_input: str, history: list) -> str:
-    from classifier import classify
-    result    = await classify(user_input)
-    intent    = result["intent"]
-    extracted = result["extracted"]
+async def process(user_input: str, history: list, classification: dict = None) -> str:
+    if classification is None:
+        from classifier import classify
+        classification = await classify(user_input)
+    intent    = classification["intent"]
+    extracted = classification["extracted"]
 
     if intent == "whatsapp":
         return await _handle_whatsapp(extracted)
@@ -320,24 +322,6 @@ async def process(user_input: str, history: list) -> str:
 
     else:  # general
         return await _handle_general(user_input, history)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  LEGACY STUBS — kept only for server.py compatibility
-#  Will be removed when server.py is updated.
-# ══════════════════════════════════════════════════════════════════════════════
-def is_whatsapp_intent(text: str) -> bool:
-    return False
-
-def is_music_intent(text: str):
-    return None
-
-async def extract_whatsapp_details(user_input: str) -> dict:
-    return {}
-
-def extract_song_query(text: str) -> str:
-    return text
-
 
 
 # ══════════════════════════════════════════════════════════════════════════════

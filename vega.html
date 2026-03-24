@@ -1530,7 +1530,30 @@ let chatHistory=[],currentChatId=null,allChats={};
 function connectWS(){
   setConnStatus('connecting');
   ws=new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen=()=>{wsReady=true;setConnStatus('online');showToast('Vega connected ✓');};
+  ws.onopen=()=>{
+    wsReady=true;
+    setConnStatus('online');
+    showToast('Vega connected ✓');
+
+      // Send location — GPS first, IP-based fallback if denied/unavailable
+    function _sendLoc(lat,lon,src){
+      ws.send(JSON.stringify({type:'location',lat,lon}));
+      console.log('[Location] via '+src,lat,lon);
+    }
+    function _ipFallback(){
+      fetch('http://ip-api.com/json/?fields=lat,lon,status')
+        .then(r=>r.json())
+        .then(d=>{ if(d.status==='success') _sendLoc(d.lat,d.lon,'ip-api'); })
+        .catch(e=>console.warn('[Location] ip-api failed:',e));
+    }
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        pos=>_sendLoc(pos.coords.latitude,pos.coords.longitude,'gps'),
+        err=>{ console.warn('[Location] gps error:',err.code,err.message); _ipFallback(); },
+        {timeout:8000,maximumAge:300000,enableHighAccuracy:false}
+      );
+    } else { _ipFallback(); }
+  };
   ws.onmessage=e=>{
     try{
       const data=JSON.parse(e.data);
@@ -1755,20 +1778,6 @@ function handleLocalQuery(text){
   if(/\b(what.?s the date|today.?s date|what day|which day|date today)\b/.test(t)){
     const dateStr=now.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     return{text:`Today is ${dateStr}.`,emotion:'neutral'};
-  }
-  if(/\b(battery|charge|power level)\b/.test(t)){
-    if('getBattery' in navigator){
-      navigator.getBattery().then(b=>{
-        const pct=Math.round(b.level*100);
-        const status=b.charging?'charging':'on battery';
-        const em=pct>60?'battery_high':pct>20?'battery_mid':'battery_low';
-        const msg=`Battery is at ${pct}%, ${status}.`;
-        addMessage('vega',msg);chatHistory.push({role:'assistant',content:msg});
-        setEmotion(em);speak(msg);
-      });
-      return{text:'Checking battery...',emotion:'thinking'};
-    }
-    return{text:'Battery API not available in this browser.',emotion:'neutral'};
   }
   return null;
 }

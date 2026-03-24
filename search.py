@@ -188,3 +188,51 @@ async def smart_search(query: str, depth: str = 'quick') -> str:
 async def search_web(query: str, max_results: int = 5) -> str:
     """Keep backward compatibility with old server.py calls."""
     return await smart_search(query, depth='quick')
+
+# ── Reverse geocode lat/lon → city name ───────────────────────────────────────
+async def reverse_geocode(lat: float, lon: float) -> str:
+    """Convert coordinates to city name using nominatim (no API key)."""
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(url, headers={"User-Agent": "VEGA-Assistant/1.0"})
+            data = r.json()
+            address = data.get("address", {})
+            city = (address.get("city") or
+                    address.get("town") or
+                    address.get("village") or
+                    address.get("state_district") or
+                    address.get("state", ""))
+            return city
+    except Exception as e:
+        print(f"[Geocode error] {e}")
+        return ""
+
+# ── Weather — wttr.in ─────────────────────────────────────────────────────────
+async def get_weather(city: str) -> str:
+    """Fetch weather for city. Returns formatted string, no LLM needed."""
+    try:
+        city_encoded = city.replace(" ", "+")
+        url = f"https://wttr.in/{city_encoded}?format=%l:+%c+%t+%f+%h+%w+%p+%P"
+
+        async with httpx.AsyncClient(timeout=6) as client:
+            r = await client.get(url, headers={"User-Agent": "VEGA-Assistant/1.0"})
+            result = r.text.strip()
+            if result:
+                parts = result.split(': ', 1)
+                location = parts[0].strip()
+                if len(parts) > 1:
+                    d = parts[1].strip().split()
+                    # d[0]=icon d[1]=temp d[2]=feels d[3]=humidity d[4]=wind d[5]=rain d[6]=pressure
+                    icon     = d[0] if len(d) > 0 else ""
+                    temp     = d[1] if len(d) > 1 else ""
+                    humidity = d[3] if len(d) > 3 else ""
+                    rain     = d[5] if len(d) > 5 else ""
+                    formatted = f"📍 {location} — {icon} {temp} · 💧 {humidity} humidity · 🌧️ {rain} rain"
+                else:
+                    formatted = result
+                return f"{formatted}\n[EMOTION:neutral]"
+        return f"Couldn't fetch weather for {city} right now.\n[EMOTION:nervous]"
+    except Exception as e:
+        print(f"[Weather error] {e}")
+        return f"Weather service unavailable right now.\n[EMOTION:nervous]"

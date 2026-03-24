@@ -39,6 +39,29 @@ _groq       = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 user_name    = os.getenv("USER_NAME", "sir").strip() or "sir"
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  MODULE-LEVEL CONSTANTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Fallback city if geolocation fails — set DEFAULT_CITY in .env
+_DEFAULT_CITY = os.getenv("DEFAULT_CITY", "").strip()
+
+# Temporal signals — queries that need live/deep search
+_TEMPORAL = re.compile(
+    r"\b(who won|latest|recent|current|today|live|score|price|news|"
+    r"update|now|result|2024|2025|2026|this (week|month|year)|"
+    r"just|happened|announced|released|launched|exam|schedule|"
+    r"deadline|cutoff|rank|rate|stock)\b",
+    re.IGNORECASE
+)
+
+# Exam/result queries — force deep scrape + inject year
+_EXAM_Q = re.compile(
+    r"\b(exam|icet|eamcet|pgcet|jee|neet|upsc|gate|result|hall.?ticket"
+    r"|notification|rank|cutoff|merit|admit.?card)\b",
+    re.IGNORECASE
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  SYSTEM PROMPT — Vega's personality and response rules
 # ══════════════════════════════════════════════════════════════════════════════
 SYSTEM_PROMPT = f"""You are VEGA — {user_name}'s personal AI. Sharp, quick, and a little chaotic in the best way.
@@ -159,13 +182,17 @@ async def generate_response(
 async def _summarize_search(query: str, raw_results: str) -> str:
     messages = [
         {"role": "system", "content": (
-            "Extract only the directly relevant facts to answer the query.\n"
-            "Factual. Use only what's in the results.\n"
-            "Maximum 3 sentences. No filler. No intro."
+            "You extract specific facts from search results to answer a query.\n"
+            "Rules:\n"
+            "- Pull out exact numbers, dates, names, scores, prices — whatever the query asks for.\n"
+            "- If the results contain the answer, state it directly. No hedging.\n"
+            "- If results are partial, state what you found and what's missing.\n"
+            "- Never say 'based on the results' or 'according to'. Just state the facts.\n"
+            "- Maximum 3 sentences. No filler. No intro."
         )},
         {"role": "user", "content": f"Query: {query}\n\nResults:\n{raw_results}"}
     ]
-    return await _call_groq(MODEL_LIGHT, messages, temperature=0.0, max_tokens=180)
+    return await _call_groq(MODEL_LIGHT, messages, temperature=0.0, max_tokens=200)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  HANDLERS
@@ -265,12 +292,34 @@ async def _handle_music_control(extracted: dict) -> str:
 
 
 async def _handle_search(extracted: dict, user_input: str, history: list) -> str:
-    from search import smart_search
-    query = extracted.get("query", user_input)
+    from search import smart_search, get_weather
+    import state
 
-    # Deep search for longer/complex queries, quick for simple ones
-    depth   = "deep" if len(query.split()) > 4 else "quick"
-    raw     = await smart_search(query, depth=depth)
+    # ── Weather — pure scrape, zero LLM ──────────────────────────────────
+    if extracted.get("sub_intent") == "weather":
+        city = extracted.get("city") or state.get("city", "") or _DEFAULT_CITY
+        if city:
+            return await get_weather(city)
+        return (
+            "I don't have your location yet, bro. "
+            "Try: 'weather in Visakhapatnam' or allow location in browser.\n[EMOTION:confused]"
+        )
+    else:
+        query = extracted.get("query", user_input)
+
+    # ── Search depth — temporal signals need deep scrape ─────────────────
+    depth = extracted.get("depth") or ("deep" if _TEMPORAL.search(query) else "quick")
+
+    # Exam/result queries — force deep + inject current year to avoid stale pages
+    if _EXAM_Q.search(query):
+        depth = "deep"
+        from datetime import datetime
+        yr = str(datetime.now().year)
+        if yr not in query:
+            query = f"{query} {yr}"
+        print(f"[Brain] exam query → deep+year | {query[:60]}")
+
+    raw = await smart_search(query, depth=depth)
 
     if raw:
         context  = await _summarize_search(query, raw)
@@ -287,8 +336,44 @@ async def _handle_emotional(user_input: str, history: list) -> str:
     return ensure_emotion(response, fallback="listening")
 
 
+# Phrases that mean the 70B is uncertain or working from stale knowledge
+_UNCERTAINTY = re.compile(
+    r"\b(not sure|not certain|don't have|do not have|can't confirm|cannot confirm"
+    r"|not announced yet|no official|no confirmed|as of my (knowledge|training|cutoff)"
+    r"|my (knowledge|training|information) (cutoff|ends|stops|is)"
+    r"|I (don't|do not) (know|have) (the |current |exact |specific )?"
+    r"(current|latest|exact|specific|updated|recent)?"
+    r"|couldn't find|could not find|no information|no data"
+    r"|check (the |official )?website|verify (this|that|it)|double.?check"
+    r"|might have changed|may have changed|subject to change)\b",
+    re.IGNORECASE
+)
+
+
 async def _handle_general(user_input: str, history: list) -> str:
     response = await generate_response(user_input, history, intent="general")
+
+    # If 70B is uncertain — auto-search instead of returning a weak answer
+    clean = strip_emotion(response)
+    if _UNCERTAINTY.search(clean):
+        print(f"[Brain] 70B uncertain → auto-searching: {user_input[:50]}")
+        from search import smart_search
+        # Build a clean search query — use the user input directly
+        # For follow-ups, append last user message for context
+        search_query = user_input
+        if history:
+            last_user = next(
+                (m["content"] for m in reversed(history) if m["role"] == "user"),
+                None
+            )
+            if last_user and last_user.strip().lower() != user_input.strip().lower():
+                search_query = f"{last_user} {user_input}"
+
+        raw = await smart_search(search_query, depth="deep")
+        if raw:
+            context  = await _summarize_search(search_query, raw)
+            response = await generate_response(user_input, history, intent="search", context=context)
+
     return ensure_emotion(response, fallback="neutral")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -304,11 +389,22 @@ async def process(user_input: str, history: list, classification: dict = None) -
     if intent == "whatsapp":
         return await _handle_whatsapp(extracted)
 
+    elif intent == "system":
+        from system import handle_system
+        result = handle_system(user_input)
+        if result:
+            return ensure_emotion(result, fallback="neutral")
+        # system.py returned None — fall through to general
+        return await _handle_general(user_input, history)
+
     elif intent == "music_play":
         return await _handle_music_play(extracted)
 
     elif intent == "music_control":
         return await _handle_music_control(extracted)
+
+    elif intent == "stock":
+        return await _handle_stock(extracted.get("query", user_input))
 
     elif intent == "search":
         return await _handle_search(extracted, user_input, history)

@@ -24,6 +24,7 @@ import subprocess
 import threading
 import socket
 import time
+import state
 
 # ── VLC paths ─────────────────────────────────────────────────────────────────
 VLC_PATHS = [
@@ -249,6 +250,8 @@ def play_song(query: str) -> dict:
         _is_playing     = True
         _is_paused      = False
         _last_query     = query
+        state.set("now_playing", {"title": _current_song, "artist": _current_artist, "playing": True})
+        state.set("last_query", query)
 
         # Wait for RC interface to initialise, then reset socket for fresh connection
         time.sleep(1.5)
@@ -348,6 +351,7 @@ def stop_song() -> dict:
     stopped         = _current_song
     _current_song   = ""
     _current_artist = ""
+    state.set("now_playing", {})
 
     return {"success": True, "stopped": stopped}
 

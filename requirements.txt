@@ -18,3 +18,4 @@ pywhatkit
 
 # ── Music (YouTube streaming via VLC) ─────────────────────────────────────────
 yt-dlp
+psutil

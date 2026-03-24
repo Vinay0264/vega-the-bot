@@ -34,6 +34,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import state
+state.set("user_name", os.getenv("USER_NAME", "Vinay"))
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -259,6 +262,7 @@ async def websocket_endpoint(websocket: WebSocket):
     history: list     = []
     last_intent: str  = "general"  # tracks last classified intent for card detection
 
+
     # Time-based greeting
     hour = datetime.now().hour
     if hour >= 22 or hour < 5:
@@ -284,13 +288,24 @@ async def websocket_endpoint(websocket: WebSocket):
             if data.get("type") == "pong":
                 continue
 
+            # Handle location message
+            if data.get("type") == "location":
+                lat = data.get("lat")
+                lon = data.get("lon")
+                if lat and lon:
+                    from search import reverse_geocode
+                    city = await reverse_geocode(lat, lon)
+                    state.set("city", city)
+                    print(f"[Location] {city} ({lat}, {lon})")
+                continue
+
             user_input = data.get("text", "").strip()
             if not user_input:
                 continue
 
             # Classify intent first — needed for card detection later
             from classifier import classify
-            classification = await classify(user_input)
+            classification = await classify(user_input, history=history)
             last_intent    = classification["intent"]
 
             # Compress history, then process

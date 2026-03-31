@@ -322,7 +322,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Classify intent first — needed for card detection later
             from classifier import classify
             classification = await classify(user_input, history=history)
-            last_intent    = classification["intent"]
+            last_intent    = classification[0]["intent"]  # first intent drives card detection
 
             # Compress history, then process
             compressed    = await compress_history(history)
@@ -346,7 +346,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if response_type == "whatsapp_sent":
                 # Extract contact/message from classification (already done — no extra API call)
-                extracted = classification.get("extracted", {})
+                extracted = classification[0].get("extracted", {})
                 await websocket.send_json({
                     "type":    "whatsapp_sent",
                     "text":    response_text,

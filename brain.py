@@ -379,10 +379,34 @@ async def _handle_general(user_input: str, history: list) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN PROCESS — entry point called by server.py
 # ══════════════════════════════════════════════════════════════════════════════
-async def process(user_input: str, history: list, classification: dict = None) -> str:
+async def process(user_input: str, history: list, classification: list = None) -> str:
     if classification is None:
         from classifier import classify
         classification = await classify(user_input)
+
+    # ── Single intent (vast majority of cases) — no change in behaviour ───────
+    if len(classification) == 1:
+        return await _dispatch(classification[0], user_input, history)
+
+    # ── Multi-intent — execute each in order, combine responses ───────────────
+    print(f"[Brain] multi-intent: {[c['intent'] for c in classification]}")
+    parts = []
+    for cls in classification:
+        result = await _dispatch(cls, user_input, history)
+        if result:
+            # Strip emotion tag from all but the last part
+            parts.append(strip_emotion(result))
+
+    if not parts:
+        return "Done, sir.\n[EMOTION:neutral]"
+
+    # Join with a separator, add one emotion tag at the end
+    combined = "\n\n".join(parts)
+    return f"{combined}\n[EMOTION:cool]"
+
+
+async def _dispatch(classification: dict, user_input: str, history: list) -> str:
+    """Execute a single classified intent and return its response string."""
     intent    = classification["intent"]
     extracted = classification["extracted"]
 
@@ -394,7 +418,6 @@ async def process(user_input: str, history: list, classification: dict = None) -
         result = handle_system(user_input)
         if result:
             return ensure_emotion(result, fallback="neutral")
-        # system.py returned None — fall through to general
         return await _handle_general(user_input, history)
 
     elif intent == "music_play":
@@ -413,7 +436,6 @@ async def process(user_input: str, history: list, classification: dict = None) -
         return await _handle_emotional(user_input, history)
 
     elif intent == "local":
-        # Frontend already handles time/date/battery locally — return nothing
         return ""
 
     else:  # general
@@ -440,9 +462,11 @@ if __name__ == "__main__":
                     continue
                 if user_input.lower() == "quit":
                     break
-                result = await classify(user_input)
-                print(f"  intent:    {result['intent']}")
-                print(f"  extracted: {result['extracted']}\n")
+                results = await classify(user_input)
+                for r in results:
+                    print(f"  intent:    {r['intent']}")
+                    print(f"  extracted: {r['extracted']}")
+                print()
             except KeyboardInterrupt:
                 break
 

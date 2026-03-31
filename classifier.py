@@ -142,7 +142,9 @@ _CLASSIFIER_PROMPT = """\
 You are a classifier for a personal AI assistant called VEGA.
 Classify the user's input and extract relevant data.
 
-Reply with EXACTLY ONE LINE in this format: intent|data
+The user may ask for MULTIPLE things in one message.
+Reply with ONE LINE PER INTENT, in order of mention.
+If only one intent, reply with just one line.
 No explanation. No punctuation at end. Nothing else.
 
 INTENTS AND FORMAT:
@@ -195,6 +197,22 @@ general|
   → "what is recursion" → general|
   → "help me write an email" → general|
 
+MULTI-INTENT EXAMPLES:
+  "send ravi I'll be late and play kesariya"
+  → whatsapp|Ravi|I'll be late
+  → music_play|kesariya
+
+  "what's the weather and search for ipl results"
+  → weather|
+  → search|IPL results today
+
+  "I'm stressed about exams, play some lofi"
+  → emotional|
+  → music_play|lofi
+
+  Single intent as before:
+  "play kesariya" → music_play|kesariya
+
 Recent conversation (last 2 turns for context — use this to resolve ambiguous follow-ups):
 {context}
 
@@ -232,7 +250,7 @@ async def _llm_classify(text: str, history: list = None) -> dict:
             model=MODEL_LIGHT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
-            max_tokens=60,
+            max_tokens=120,
         )
         raw = response.choices[0].message.content.strip()
         print(f"[Classifier] LLM raw → {raw!r}")
@@ -240,16 +258,14 @@ async def _llm_classify(text: str, history: list = None) -> dict:
 
     except Exception as e:
         print(f"[Classifier] LLM error: {e}")
-        return {"intent": "general", "extracted": {}}
+        return [{"intent": "general", "extracted": {}}]
 
 
-def _parse_llm_response(raw: str, original_input: str) -> dict:
+def _parse_single_line(line: str, original_input: str) -> dict | None:
     """
-    Parse pipe-separated LLM response into classification dict.
-    Handles malformed output gracefully — always returns something valid.
+    Parse one pipe-separated line into a classification dict.
+    Returns None if the line is unrecognisable (caller skips it).
     """
-    # Take only first line — model sometimes adds explanation after
-    line = raw.splitlines()[0].strip().lower()
 
     # Split on pipe
     parts = [p.strip() for p in line.split("|")]
@@ -303,79 +319,106 @@ def _parse_llm_response(raw: str, original_input: str) -> dict:
     return {"intent": "general", "extracted": {}}
 
 
+def _parse_llm_response(raw: str, original_input: str) -> list:
+    """
+    Parse multi-line LLM response into a list of classification dicts.
+    Each line is one intent. Single-intent responses return a one-item list.
+    Skips blank lines and unrecognisable lines gracefully.
+    Falls back to [general] if nothing valid is parsed.
+    """
+    results = []
+    for line in raw.splitlines():
+        line = line.strip().lower()
+        if not line:
+            continue
+        # Skip lines that look like explanations (contain spaces before the first pipe word)
+        parsed = _parse_single_line(line, original_input)
+        if parsed:
+            results.append(parsed)
+
+    if not results:
+        return [{"intent": "general", "extracted": {}}]
+
+    # If any result is general and there are other real intents, drop the general
+    # (LLM sometimes appends a spurious general| line)
+    non_general = [r for r in results if r["intent"] != "general"]
+    if non_general:
+        return non_general
+
+    return results
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN ENTRY POINT — called by brain.py
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def classify(user_input: str, history: list = None) -> dict:
+async def classify(user_input: str, history: list = None) -> list:
     """
-    Classify user input. Returns { "intent": str, "extracted": dict }.
-    Stage 1: regex for structurally certain commands (zero tokens).
+    Classify user input. Returns a LIST of { "intent": str, "extracted": dict }.
+    Single intent -> one-item list (most cases).
+    Multi-intent -> multiple items, executed in order by brain.py.
+    Stage 1: regex for structurally certain commands (zero tokens, always single intent).
     Stage 2: single LLM call for everything else.
-    history: conversation so far — passed to LLM to resolve ambiguous follow-ups.
+    history: conversation so far -- passed to LLM to resolve ambiguous follow-ups.
     """
     t = user_input.strip()
 
-    # ── LOCAL — frontend handles time/date ────────────────────────────────────
+    # LOCAL -- frontend handles time/date
     if _LOCAL.search(t):
         print("[Classifier] local")
-        return {"intent": "local", "extracted": {}}
+        return [{"intent": "local", "extracted": {}}]
 
-    # ── SYSTEM — system.py handles math/stats/conversion ─────────────────────
+    # SYSTEM -- system.py handles math/stats/conversion
     if _SYSTEM.search(t):
         print("[Classifier] system")
-        return {"intent": "system", "extracted": {}}
+        return [{"intent": "system", "extracted": {}}]
 
-    # ── MUSIC CONTROLS — structurally unambiguous, always these commands ──────
+    # MUSIC CONTROLS -- structurally unambiguous, always these commands
     if _MUSIC_STOP.search(t):
         print("[Classifier] music_control | stop")
-        return {"intent": "music_control", "extracted": {"action": "stop"}}
+        return [{"intent": "music_control", "extracted": {"action": "stop"}}]
 
     if _MUSIC_PAUSE.search(t):
         print("[Classifier] music_control | pause")
-        return {"intent": "music_control", "extracted": {"action": "pause"}}
+        return [{"intent": "music_control", "extracted": {"action": "pause"}}]
 
     if _MUSIC_RESUME.search(t):
         print("[Classifier] music_control | resume")
-        return {"intent": "music_control", "extracted": {"action": "resume"}}
+        return [{"intent": "music_control", "extracted": {"action": "resume"}}]
 
     if _MUSIC_VOL_SET.search(t):
         level = _extract_volume_level(t)
         print(f"[Classifier] music_control | volume_set={level}")
-        return {"intent": "music_control", "extracted": {"action": "volume_set", "level": level}}
+        return [{"intent": "music_control", "extracted": {"action": "volume_set", "level": level}}]
 
     if _MUSIC_VOL_UP.search(t):
         amount = _get_volume_amount(t)
         print(f"[Classifier] music_control | volume_up amount={amount}")
-        return {"intent": "music_control", "extracted": {"action": "volume_up", "amount": amount}}
+        return [{"intent": "music_control", "extracted": {"action": "volume_up", "amount": amount}}]
 
     if _MUSIC_VOL_DOWN.search(t):
         amount = _get_volume_amount(t)
         print(f"[Classifier] music_control | volume_down amount={amount}")
-        return {"intent": "music_control", "extracted": {"action": "volume_down", "amount": amount}}
+        return [{"intent": "music_control", "extracted": {"action": "volume_down", "amount": amount}}]
 
     if _MUSIC_STATUS.search(t):
         print("[Classifier] music_control | status")
-        return {"intent": "music_control", "extracted": {"action": "status"}}
+        return [{"intent": "music_control", "extracted": {"action": "status"}}]
 
-    # ── SHORT INPUT FAST-PATH — skip LLM for obvious conversational replies ──
-    # Single words or very short inputs with no intent keywords → always general.
-    # Saves one 8B API call. "yes", "yeah", "ok", "nice", "nooo", "lol" etc.
+    # SHORT INPUT FAST-PATH -- skip LLM for obvious conversational replies
     _INTENT_HINT = re.compile(
-        r"(play|stop|pause|resume|volume|weather|stock|search|message|tell|send"
+        r"(play|stop|pause|resume|volume|weather|stock|search|message|tell|send"
         r"|remind|open|close|calculate|what|who|when|where|why|how|is|are|was"
-        r"|will|can|could|should|would|does|did|has|have)",
+        r"|will|can|could|should|would|does|did|has|have)",
         re.IGNORECASE
     )
     if len(t.split()) <= 3 and not _INTENT_HINT.search(t):
-        print(f"[Classifier] short reply → general")
-        return {"intent": "general", "extracted": {}}
+        print(f"[Classifier] short reply -> general")
+        return [{"intent": "general", "extracted": {}}]
 
-    # ── EVERYTHING ELSE → single LLM call ─────────────────────────────────────
-    # music_play, whatsapp, weather, search, emotional, general
-    # One call. Classifies + extracts simultaneously.
+    # EVERYTHING ELSE -> single LLM call
+    # Returns a list -- one item for single intent, multiple for multi-intent.
     return await _llm_classify(t, history=history)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  STANDALONE TEST

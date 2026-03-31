@@ -36,7 +36,6 @@ load_dotenv()
 
 from tts import speak
 from brain import strip_emotion
-import pygame
 import state
 state.set("user_name", os.getenv("USER_NAME", "Vinay"))
 
@@ -129,6 +128,7 @@ def delete_chat_file(chat_id: str):
 # ══════════════════════════════════════════════════════════════════════════════
 @app.post("/tts/stop")
 async def stop_tts():
+    import pygame  # lazy — only needed when stopping TTS
     pygame.mixer.music.stop()
     return {"ok": True}
 

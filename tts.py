@@ -1,20 +1,22 @@
 """
 tts.py — VEGA
 Edge-TTS + pygame for voice output.
-pygame.mixer initialized once at import time.
+
+LATENCY FIX:
+  Old: tts.save(path) → writes full MP3 to disk → load → play.
+  New: tts.stream() → chunks written to BytesIO in memory → play.
+  Eliminates disk I/O entirely. Faster and no temp file cleanup needed.
 """
 
 import asyncio
-import tempfile
-import os
+import io
 import re
 import time
 import edge_tts
 import pygame
 
-VOICE = "en-US-GuyNeural"
 RATE  = "+0%"
-PITCH = "+30Hz"
+PITCH = "+40Hz"
 
 # init once
 pygame.mixer.init()
@@ -47,11 +49,8 @@ def _get_tts_text(text: str) -> str:
     return _OVERFLOW_PHRASES[int(time.time()) % len(_OVERFLOW_PHRASES)]
 
 def _get_voice(text: str) -> str:
-    # Count Telugu characters (Unicode range: 0C00–0C7F)
     telugu = len([c for c in text if '\u0C00' <= c <= '\u0C7F'])
-    # Count Hindi/Devanagari characters (Unicode range: 0900–097F)
     hindi  = len([c for c in text if '\u0900' <= c <= '\u097F'])
-    
     if telugu > 5:
         return "te-IN-MohanNeural"
     if hindi > 5:
@@ -67,17 +66,26 @@ async def speak(text: str):
         return
     try:
         tts_text = _get_tts_text(text)
-        tts = edge_tts.Communicate(tts_text, voice=_get_voice(tts_text), rate=RATE, pitch=PITCH)
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            path = f.name
-        await tts.save(path)
-        pygame.mixer.music.load(path)
+        voice    = _get_voice(tts_text)
+
+        # Stream into memory — no disk I/O
+        buf = io.BytesIO()
+        tts = edge_tts.Communicate(tts_text, voice=voice, rate=RATE, pitch=PITCH)
+        async for chunk in tts.stream():
+            if chunk["type"] == "audio":
+                buf.write(chunk["data"])
+
+        buf.seek(0)
+        if buf.getbuffer().nbytes == 0:
+            return
+
+        pygame.mixer.music.load(buf, "mp3")
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
             await asyncio.sleep(0.1)
-        pygame.mixer.music.unload()  # release file handle
-        await asyncio.sleep(0.1)     # small buffer
-        os.unlink(path)
+        pygame.mixer.music.unload()
+        await asyncio.sleep(0.05)
+
     except Exception as e:
         print(f"[TTS] error: {e}")
 

@@ -4,11 +4,9 @@ Handles: PC stats, math, unit conversion, datetime
 No API calls. No LLM. Pure Python.
 """
 
-import psutil
 import ast
 import re
 import math
-import platform
 from datetime import datetime
 
 
@@ -47,6 +45,7 @@ def _handle_pc_stats(q: str) -> str | None:
     if not any(t in q for t in _PC_TRIGGERS):
         return None
 
+    import psutil  # lazy — only loaded when actually needed
     parts = []
 
     # CPU

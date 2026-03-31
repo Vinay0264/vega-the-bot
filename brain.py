@@ -401,8 +401,17 @@ async def process(user_input: str, history: list, classification: list = None) -
         return "Done, sir.\n[EMOTION:neutral]"
 
     # Join with a separator, add one emotion tag at the end
+    # Pick emotion based on what was executed — music beats cool
+    intents = [c["intent"] for c in classification]
+    if "music_play" in intents or "music_control" in intents:
+        final_emotion = "music"
+    elif "whatsapp" in intents:
+        final_emotion = "cool"
+    else:
+        final_emotion = "cool"
+
     combined = "\n\n".join(parts)
-    return f"{combined}\n[EMOTION:cool]"
+    return f"{combined}\n[EMOTION:{final_emotion}]"
 
 
 async def _dispatch(classification: dict, user_input: str, history: list) -> str:

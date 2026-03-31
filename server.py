@@ -341,31 +341,54 @@ async def websocket_endpoint(websocket: WebSocket):
             if len(history) > 60:
                 history = history[-40:]
 
-            # Determine which UI card to send
-            response_type = _get_response_type(response_text, last_intent)
+            # Determine which UI cards to send
+            # For multi-intent, scan ALL intents and send every relevant card
+            all_intents = [c["intent"] for c in classification]
 
-            if response_type == "whatsapp_sent":
-                # Extract contact/message from classification (already done — no extra API call)
-                extracted = classification[0].get("extracted", {})
-                await websocket.send_json({
-                    "type":    "whatsapp_sent",
-                    "text":    response_text,
-                    "contact": extracted.get("contact", ""),
-                    "message": extracted.get("message", ""),
-                })
+            sent_card = False
 
-            elif response_type == "music_playing":
+            # WhatsApp card — find whatsapp classification item for extracted data
+            if "whatsapp" in all_intents:
+                wa_cls = next(c for c in classification if c["intent"] == "whatsapp")
+                extracted = wa_cls.get("extracted", {})
+                if _get_response_type(response_text, "whatsapp") == "whatsapp_sent":
+                    await websocket.send_json({
+                        "type":    "whatsapp_sent",
+                        "text":    response_text,
+                        "contact": extracted.get("contact", ""),
+                        "message": extracted.get("message", ""),
+                    })
+                    sent_card = True
+
+            # Music card — send if music_play was in intents and song is actually playing
+            if "music_play" in all_intents:
                 from music import get_now_playing, get_last_query
                 info = get_now_playing()
-                await websocket.send_json({
-                    "type":   "music_playing",
-                    "text":   response_text,
-                    "query":  get_last_query(),
-                    "title":  info.get("title", ""),
-                    "artist": info.get("artist", ""),
-                })
-            else:
-                await websocket.send_json({"type": "response", "text": response_text})
+                if info.get("playing"):
+                    await websocket.send_json({
+                        "type":   "music_playing",
+                        "text":   response_text,
+                        "query":  get_last_query(),
+                        "title":  info.get("title", ""),
+                        "artist": info.get("artist", ""),
+                    })
+                    sent_card = True
+
+            # Fallback — single intent card logic (existing behaviour, untouched)
+            if not sent_card:
+                response_type = _get_response_type(response_text, last_intent)
+                if response_type == "music_playing":
+                    from music import get_now_playing, get_last_query
+                    info = get_now_playing()
+                    await websocket.send_json({
+                        "type":   "music_playing",
+                        "text":   response_text,
+                        "query":  get_last_query(),
+                        "title":  info.get("title", ""),
+                        "artist": info.get("artist", ""),
+                    })
+                else:
+                    await websocket.send_json({"type": "response", "text": response_text})
 
     except WebSocketDisconnect:
         print("[WS] Client disconnected.")

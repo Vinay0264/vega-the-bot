@@ -160,8 +160,11 @@ music_play|<song or artist query>
 
 whatsapp|<contact name>|<message text>
   → user wants to send a WhatsApp message. Rephrase message as direct text.
-  → "tell ravi I'll be late" → whatsapp|Ravi|I'll be late
+  → Always use proper capitalization and grammar in the message.
+  → If no message is specified, leave message blank — do NOT copy the raw input.
+  → "tell amma I'll be late" → whatsapp|Amma|I'll be late
   → "message mom that dinner is ready" → whatsapp|Mom|Dinner is ready
+  → "send a message to amma" → whatsapp|Amma|
   → CRITICAL — NOT whatsapp (these are general conversation):
      "i will tell vinay" → general|
      "i will tell him" → general|
@@ -283,10 +286,15 @@ def _parse_single_line(line: str, original_input: str) -> dict | None:
     if intent == "whatsapp":
         contact = parts[1] if len(parts) > 1 else ""
         message = parts[2] if len(parts) > 2 else ""
-        if not contact or not message:
+        if not contact:
             print("[Classifier] LLM → whatsapp parse incomplete, falling to general")
             return {"intent": "general", "extracted": {}}
-        print(f"[Classifier] LLM → whatsapp | contact={contact}")
+        # If message is empty or looks like raw input leaking in (>8 words), default to "Hi"
+        if not message or len(message.split()) > 8:
+            message = "Hi"
+        # Ensure proper sentence casing
+        message = message[0].upper() + message[1:] if message else "Hi"
+        print(f"[Classifier] LLM → whatsapp | contact={contact} | message={message}")
         return {"intent": "whatsapp", "extracted": {"contact": contact, "message": message}}
 
     # ── weather ───────────────────────────────────────────────────────────────
@@ -328,10 +336,13 @@ def _parse_llm_response(raw: str, original_input: str) -> list:
     """
     results = []
     for line in raw.splitlines():
-        line = line.strip().lower()
+        line = line.strip()
         if not line:
             continue
-        # Skip lines that look like explanations (contain spaces before the first pipe word)
+        # Lowercase only the intent token (first segment), preserve casing of data fields
+        segments = line.split("|")
+        segments[0] = segments[0].lower().strip()
+        line = "|".join(segments)
         parsed = _parse_single_line(line, original_input)
         if parsed:
             results.append(parsed)

@@ -15,7 +15,12 @@ beautifulsoup4
 
 # ── WhatsApp messaging ────────────────────────────────────────────────────────
 pywhatkit
+pyautogui
 
 # ── Music (YouTube streaming via VLC) ─────────────────────────────────────────
 yt-dlp
 psutil
+
+# ── Text-to-Speech ───────────────────────────────────────────────────────────
+pygame
+edge-tts

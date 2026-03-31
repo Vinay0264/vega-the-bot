@@ -282,7 +282,6 @@ input,textarea{font-family:inherit;outline:none;border:none;background:none}
           <button class="lang-chip active" data-lang="en-US" data-tts="en-US" onclick="selectLang(this)">EN</button>
           <button class="lang-chip" data-lang="te-IN" data-tts="te-IN" onclick="selectLang(this)">తె</button>
           <button class="lang-chip" data-lang="hi-IN" data-tts="hi-IN" onclick="selectLang(this)">हि</button>
-          <button class="tts-btn" id="ttsBtn" onclick="toggleTTS()" title="Toggle voice" style="margin-left:4px">🔊</button>
         </div>
         <div class="vega-input-row">
           <textarea class="vega-textarea" id="vegaInput" placeholder="Ask Vega..." rows="1"
@@ -785,7 +784,6 @@ document.getElementById('vegaFaceWrap').addEventListener('click', e=>{
         chatHistory.push({role:'user',content:'[Vinay hit Vega face 3 times]'});
         chatHistory.push({role:'assistant',content:'Ow! That hurt, sir. Why are you hitting me? [EMOTION:crying]'});
         if(typeof addMessage==='function') addMessage('vega','Ow! That hurt, sir. Why are you hitting me?');
-        if(typeof speak==='function') speak('Ow! That hurt, sir. Why are you hitting me?');
         if(typeof saveCurrentChat==='function') saveCurrentChat();
       }
     },1500);
@@ -835,7 +833,6 @@ function _checkCursorSpin(x,y){
       chatHistory.push({role:'user',content:'[Vinay spun the cursor in circles around Vega face]'});
       chatHistory.push({role:'assistant',content:'Whoa... everything is spinning, sir. Stop that! [EMOTION:dizzy]'});
       if(typeof addMessage==='function') addMessage('vega','Whoa... everything is spinning, sir. Stop that!');
-      if(typeof speak==='function') speak('Whoa... everything is spinning, sir. Stop that!');
       if(typeof saveCurrentChat==='function') saveCurrentChat();
     }
   }
@@ -1154,133 +1151,6 @@ function checkRecovery(text){
 }
 
 // ════════════════════════════════════════════
-//  TTS — TEXT TO SPEECH (Chrome + Edge + Firefox)
-// ════════════════════════════════════════════
-let ttsMuted=false;
-let ttsLang='en-US';
-let voicesReady=false;
-let _voiceCache={};
-
-// Pre-load voices as soon as they're available
-function initVoices(){
-  const voices=window.speechSynthesis.getVoices();
-  if(!voices.length) return;
-  voicesReady=true;
-
-  // English — priority order tuned for VEGA's personality
-  _voiceCache['en-US']=
-    voices.find(v=>v.name==='Microsoft Guy Online (Natural) - English (United States)')||
-    voices.find(v=>v.name==='Microsoft Jenny Online (Natural) - English (United States)')||
-    voices.find(v=>v.name==='Google UK English Female')||
-    voices.find(v=>v.name==='Microsoft Zira - English (United States)')||
-    voices.find(v=>v.lang==='en-US'&&v.localService)||
-    voices.find(v=>v.lang==='en-US')||
-    voices[0];
-
-  // Telugu
-  _voiceCache['te-IN']=
-    voices.find(v=>v.name==='Microsoft Shruti Online (Natural) - Telugu (India)')||
-    voices.find(v=>v.lang==='te-IN')||
-    _voiceCache['en-US'];
-
-  // Hindi
-  _voiceCache['hi-IN']=
-    voices.find(v=>v.name==='Microsoft Swara Online (Natural) - Hindi (India)')||
-    voices.find(v=>v.name==='Google हिन्दी')||
-    voices.find(v=>v.lang==='hi-IN')||
-    _voiceCache['en-US'];
-
-  console.log('[TTS] Voices loaded:',Object.entries(_voiceCache).map(([k,v])=>`${k}→${v?.name}`).join(', '));
-}
-
-if(window.speechSynthesis){
-  // Chrome fires voiceschanged after load
-  window.speechSynthesis.onvoiceschanged=initVoices;
-  // Edge/Firefox often have voices immediately
-  setTimeout(initVoices,100);
-  setTimeout(initVoices,800);
-}
-
-// 4-line TTS limit
-const TTS_MAX_LINES=4;
-const TTS_OVERFLOW_PHRASES=[
-  'Sir, this answer is a bit detailed — please take a look.',
-  'There is more to read here, sir.',
-  'I have written out the full answer for you, sir.',
-  'Sir, please have a look at the complete response.',
-];
-
-function getTTSText(text){
-  // Strip markdown formatting for speech
-  let clean=text
-    .replace(/```[\s\S]*?```/g,'')
-    .replace(/`[^`]+`/g,'')
-    .replace(/\*\*(.*?)\*\*/g,'$1')
-    .replace(/#{1,3}\s/g,'')
-    .replace(/[-*]\s/g,'')
-    .replace(/\n{2,}/g,'\n')
-    .trim();
-  const lines=clean.split('\n').filter(l=>l.trim().length>0);
-  if(lines.length<=TTS_MAX_LINES){
-    return clean;
-  }
-  // Too long — return overflow phrase
-  return TTS_OVERFLOW_PHRASES[Math.floor(Math.random()*TTS_OVERFLOW_PHRASES.length)];
-}
-
-function speak(text){
-  if(ttsMuted||!window.speechSynthesis) return;
-  // Cancel any ongoing speech immediately
-  window.speechSynthesis.cancel();
-  const ttsText=getTTSText(text);
-  if(!ttsText) return;
-
-  // Small delay to avoid Chrome lag on cancel→speak
-  setTimeout(()=>{
-    const utt=new SpeechSynthesisUtterance(ttsText);
-    utt.lang=ttsLang;
-    utt.rate=ttsLang.startsWith('te')?0.95:ttsLang.startsWith('hi')?0.95:1.0;
-    utt.pitch=ttsLang.startsWith('en')?1.0:1.1;
-    utt.volume=1;
-    const voice=_voiceCache[ttsLang]||_voiceCache['en-US'];
-    if(voice) utt.voice=voice;
-    utt.onstart=()=>{
-      pauseMicForTTS(); // pause mic so Vega doesn't hear itself
-    };
-    utt.onend=()=>{
-      resumeMicAfterTTS(); // resume mic after speaking
-    };
-    utt.onerror=(e)=>{
-      if(e.error!=='interrupted'&&e.error!=='canceled')
-        console.warn('[TTS error]',e.error);
-      resumeMicAfterTTS();
-    };
-    window.speechSynthesis.speak(utt);
-  },50);
-}
-
-// Chrome has a bug where TTS stops after ~15s — keep it alive
-setInterval(()=>{
-  if(window.speechSynthesis&&window.speechSynthesis.speaking){
-    window.speechSynthesis.pause();
-    window.speechSynthesis.resume();
-  }
-},10000);
-
-function stopSpeaking(){
-  if(window.speechSynthesis) window.speechSynthesis.cancel();
-}
-
-function toggleTTS(){
-  ttsMuted=!ttsMuted;
-  const btn=document.getElementById('ttsBtn');
-  if(btn){btn.textContent=ttsMuted?'🔇':'🔊';btn.classList.toggle('muted',ttsMuted);}
-  if(ttsMuted) stopSpeaking();
-  updateDashVoice();
-  showToast(ttsMuted?'Voice muted':'Voice on');
-}
-
-// ════════════════════════════════════════════
 //  MUSIC MODE
 // ════════════════════════════════════════════
 function toggleMusic(){
@@ -1391,9 +1261,9 @@ function updateDashboard(emotion){
 function updateDashVoice(){
   const dv=document.getElementById('dashVoice');
   if(dv){
-    const langName=ttsLang.startsWith('te')?'తె':ttsLang.startsWith('hi')?'हि':'EN';
-    dv.textContent=`TTS ${ttsMuted?'Off':'On'} · ${langName}`;
-    dv.style.color=ttsMuted?'var(--red)':'var(--accent)';
+    const langName=speechLang.startsWith('te')?'తె':speechLang.startsWith('hi')?'हि':'EN';
+    dv.textContent=`TTS On · ${langName}`;
+    dv.style.color='var(--accent)';
   }
 }
 
@@ -1558,8 +1428,10 @@ function connectWS(){
     try{
       const data=JSON.parse(e.data);
       if(data.type==='ping'){ws.send(JSON.stringify({type:'pong'}));return;}
+      if(data.type==='mic_pause'){ pauseMicForTTS(); return; }
+      if(data.type==='mic_resume'){ resumeMicAfterTTS(); return; }
       if(data.type==='response'){
-        removeTyping();stopSpeaking();
+        removeTyping();
         let raw=data.text||'';
         const tag=parseEmotionTag(raw);
         const clean=stripEmotionTag(raw);
@@ -1568,12 +1440,11 @@ function connectWS(){
         msgCount++;
         if(tag&&EMOTIONS[tag])setEmotion(tag);
         else setEmotion(detectFromResponse(clean)||'neutral');
-        speak(clean);
         setConnStatus('online');
         saveCurrentChat();clearTask();
       }
       if(data.type==='whatsapp_sent'){
-        removeTyping();stopSpeaking();
+        removeTyping();
         let raw=data.text||'';
         const tag=parseEmotionTag(raw);
         const clean=stripEmotionTag(raw);
@@ -1582,13 +1453,12 @@ function connectWS(){
         msgCount++;
         if(tag&&EMOTIONS[tag])setEmotion(tag);
         else setEmotion('cool');
-        speak(clean);
         setConnStatus('online');
         saveCurrentChat();clearTask();
       }
       if(data.type==='error'){removeTyping();addMessage('vega','Something went wrong. Try again.');setEmotion('nervous');setConnStatus('online');clearTask();}
       if(data.type==='music_playing'){
-        removeTyping();stopSpeaking();
+        removeTyping();
         let raw=data.text||'';
         const tag=parseEmotionTag(raw);
         const clean=stripEmotionTag(raw);
@@ -1596,7 +1466,6 @@ function connectWS(){
         chatHistory.push({role:'assistant',content:clean});
         msgCount++;
         setEmotion('music');
-        speak(clean);
         setConnStatus('online');
         saveCurrentChat();clearTask();
       }
@@ -1613,6 +1482,9 @@ function setConnStatus(s){
   else if(s==='offline'){dot.className='status-dot offline';txt.textContent='Disconnected · Retrying...';}
   else if(s==='connecting'){dot.className='status-dot thinking';txt.textContent='Connecting...';}
   else if(s==='thinking'){dot.className='status-dot thinking';txt.textContent='Thinking...';}
+}
+async function stopVegaSpeaking(){
+    try{ await fetch('/tts/stop', {method:'POST'}); }catch(e){}
 }
 
 // ════════════════════════════════════════════
@@ -1783,6 +1655,7 @@ function handleLocalQuery(text){
 }
 
 function sendMessage(){
+  stopVegaSpeaking();
   const vegaInp=document.getElementById('vegaInput');
   const chatInp=document.getElementById('chatInput');
   const input=vegaInp||chatInp;
@@ -1801,7 +1674,7 @@ function sendMessage(){
       addMessage('vega',localResp.text);
       chatHistory.push({role:'assistant',content:localResp.text});
       msgCount++;setEmotion(localResp.emotion||'neutral');
-      speak(localResp.text);saveCurrentChat();
+      saveCurrentChat();
     },280);
     return;
   }
@@ -1813,7 +1686,6 @@ function sendMessage(){
   addMessage('user',text);
   chatHistory.push({role:'user',content:text});
   msgCount++;lastActivityTime=Date.now();
-  stopSpeaking();
   // Proactive: note if mic is active and user types
   if(micActive){
     showToast('Tip: voice input is active — you can speak instead');
@@ -1913,6 +1785,7 @@ function setupSpeech(){
 function toggleMic(){micActive?stopMic():startMic();}
 
 function startMic(){
+  stopVegaSpeaking();
   if(!recognition&&!setupSpeech()) return;
   clearTimeout(micRestartTimer);
   micPaused=false;
@@ -1968,7 +1841,7 @@ function sendMessageText(text){
       addMessage('vega',localResp.text);
       chatHistory.push({role:'assistant',content:localResp.text});
       msgCount++;setEmotion(localResp.emotion||'neutral');
-      speak(localResp.text);saveCurrentChat();
+      saveCurrentChat();
     },280);
     return;
   }
@@ -1978,7 +1851,6 @@ function sendMessageText(text){
   addMessage('user',text);
   chatHistory.push({role:'user',content:text});
   msgCount++;lastActivityTime=Date.now();
-  stopSpeaking();
   const taskS=detectTask(text);
   if(taskS) runTaskAnimation(taskS);
   else{const em=detectFromInput(text);setEmotion(em||'thinking');}
@@ -2388,7 +2260,6 @@ function proactiveSpeak(text,emotion){
   if(emotion) setEmotion(emotion);
   addMessage('vega',text);
   chatHistory.push({role:'assistant',content:text});
-  speak(text);
 }
 
 // Proactive: idle for 2 minutes — Vega starts a conversation

@@ -28,6 +28,8 @@ import sys
 import difflib
 import pywhatkit
 from pathlib import Path
+import time
+import pyautogui
 
 SCRIPT_DIR    = Path(__file__).parent  # vega root folder
 CONTACTS_FILE = SCRIPT_DIR / "contacts.txt"
@@ -135,9 +137,11 @@ def send_message_to_contact(contact_query: str, message: str) -> dict:
             phone_no=number,
             message=message,
             wait_time=20,    # intentional delay — avoids bot detection
-            tab_close=True,
+            tab_close=False,
             close_time=5
         )
+        time.sleep(3)
+        pyautogui.hotkey("ctrl", "w")
         print(f"[WhatsApp] message sent to {name}")
         return {"success": True, "name": name, "number": number}
 

@@ -34,6 +34,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from tts import speak
+from brain import strip_emotion
+import pygame
 import state
 state.set("user_name", os.getenv("USER_NAME", "Vinay"))
 
@@ -62,6 +65,13 @@ connected_clients: list = []
 CHATS_DIR = Path(__file__).parent / "chat_history"
 CHATS_DIR.mkdir(exist_ok=True)
 
+async def speak_with_mic_control(websocket, text):
+    try:
+        await websocket.send_json({"type": "mic_pause"})
+        await speak(text)
+        await websocket.send_json({"type": "mic_resume"})
+    except Exception as e:
+        print(f"[TTS] mic control error: {e}")
 
 def _safe_title(title: str) -> str:
     """Sanitize chat title for use as a filename."""
@@ -117,6 +127,10 @@ def delete_chat_file(chat_id: str):
 # ══════════════════════════════════════════════════════════════════════════════
 #  CHAT API ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
+@app.post("/tts/stop")
+async def stop_tts():
+    pygame.mixer.music.stop()
+    return {"ok": True}
 
 @app.get("/chats")
 async def get_chats():
@@ -275,6 +289,8 @@ async def websocket_endpoint(websocket: WebSocket):
         greeting = "VEGA online. Good morning, sir."
 
     await websocket.send_json({"type": "response", "text": greeting})
+    asyncio.create_task(speak_with_mic_control(websocket, greeting))
+
 
     try:
         while True:
@@ -316,6 +332,8 @@ async def websocket_endpoint(websocket: WebSocket):
             # Empty response means frontend handled it locally — do nothing
             if not response_text:
                 continue
+            # TTS — play in background, don't block UI
+            asyncio.create_task(speak_with_mic_control(websocket, strip_emotion(response_text)))
 
             # Update history
             history.append({"role": "user",      "content": user_input})
@@ -346,7 +364,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     "title":  info.get("title", ""),
                     "artist": info.get("artist", ""),
                 })
-
             else:
                 await websocket.send_json({"type": "response", "text": response_text})
 

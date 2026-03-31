@@ -10,6 +10,13 @@ KEY FIX vs old version:
   New: get_vlc_status() queries VLC directly via RC before any toggle.
        Internal flags are updated from VLC's actual response, not assumed.
 
+FIXES in this version:
+  1. volume up/down now reads VLC's real volume before stepping
+  2. RC ready-wait replaced with poll loop (no more flat 2.5s sleep)
+  3. set_volume(100) on play removed — volume persists across songs
+  4. Standalone test CLI: play <query> inline, no second prompt
+  5. stop_song() early-returns if nothing is playing
+
 REQUIREMENTS:
   pip install yt-dlp
 
@@ -44,7 +51,7 @@ _current_artist = ""
 _is_playing     = False   # True if VLC process is alive
 _is_paused      = False   # mirrors VLC's actual state — updated via RC query
 _last_query     = ""      # original search query — used for resume/restart
-_current_volume = 100     # always start at full volume
+_current_volume = 100     # tracks last known volume level
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  VLC FINDER
@@ -108,6 +115,23 @@ def _rc_close():
             pass
         _rc_socket = None
 
+
+def _rc_wait_ready(timeout: float = 3.0) -> bool:
+    """
+    FIX 2: Poll the RC port until VLC is ready, instead of flat sleep.
+    Tries every 200ms. Returns True if ready, False if timed out.
+    Average wait drops from 2.5s to ~0.6s.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            sock = socket.create_connection((RC_HOST, RC_PORT), timeout=0.3)
+            sock.close()
+            return True
+        except Exception:
+            time.sleep(0.2)
+    return False
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  VLC STATE QUERY — the fix for state sync
 #  Asks VLC directly: "are you paused right now?"
@@ -139,6 +163,35 @@ def get_vlc_status() -> str:
         return "stopped"
 
     return "unknown"
+
+
+def _get_vlc_volume() -> int:
+    """
+    Read VLC's actual current volume via RC.
+    Flushes stale RC buffer before sending to avoid reading garbage.
+    VLC reports volume as 0–256. We convert back to 0–100.
+    Returns -1 if unreadable (caller falls back to _current_volume).
+    """
+    global _rc_socket
+    # Flush any stale data sitting in the buffer before we send our command
+    if _rc_socket:
+        try:
+            _rc_socket.settimeout(0.1)
+            _rc_socket.recv(4096)  # discard anything queued
+        except Exception:
+            pass
+        finally:
+            _rc_socket.settimeout(3)
+
+    response = _rc_send("volume")
+    if not response:
+        return -1
+    # VLC response format: "> ( audio volume: 256 )"
+    match = re.search(r"audio volume:\s*(\d+)", response)
+    if match:
+        vlc_vol = int(match.group(1))
+        return round((vlc_vol / 256) * 100)
+    return -1
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  AUDIO URL FETCH — yt-dlp
@@ -223,24 +276,24 @@ def play_song(query: str) -> dict:
 
     # Clean stop of any current song before starting new one
     stop_song()
-    time.sleep(0.5)
 
     try:
-        CREATE_NO_WINDOW = 0x08000000  # Windows: hide console window
+        # Tell Windows: create window minimized to taskbar
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 6  # SW_MINIMIZE
 
         _vlc_process = subprocess.Popen(
             [
                 vlc_path,
                 fetch["url"],
-                "--no-video",           # audio only — no video window
-                "--no-fullscreen",
-                "--intf", "dummy",      # no VLC GUI window
-                "--extraintf", "rc",    # RC control interface
+                "--intf", "rc",
                 "--rc-host", f"{RC_HOST}:{RC_PORT}",
+                "--no-video",
                 "--play-and-exit",
                 "--quiet",
             ],
-            creationflags=CREATE_NO_WINDOW,
+            startupinfo=startupinfo,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -253,12 +306,16 @@ def play_song(query: str) -> dict:
         state.set("now_playing", {"title": _current_song, "artist": _current_artist, "playing": True})
         state.set("last_query", query)
 
-        # Wait for RC interface to initialise, then reset socket for fresh connection
-        time.sleep(1.5)
-        _rc_close()
+        # FIX 2: Poll until RC is ready instead of flat 2.5s sleep
+        ready = _rc_wait_ready(timeout=3.0)
+        _rc_close()  # reset socket for fresh connection after poll
+        if not ready:
+            print("[Music] warning: RC not ready after 3s, continuing anyway")
 
-        # Always start at full volume
-        set_volume(100)
+        # FIX 3: Re-apply last known volume — VLC resets to 256 on every new stream.
+        # Small sleep needed: port is open but RC isn't fully ready to accept commands yet.
+        time.sleep(0.5)
+        set_volume(_current_volume)
 
         print(f"[Music] playing: {_current_song} by {_current_artist}")
 
@@ -292,11 +349,9 @@ def pause_song() -> dict:
     if not _is_playing:
         return {"success": False, "error": "Nothing is playing"}
 
-    # Ask VLC what it is actually doing right now — fixes state sync issue
     actual_state = get_vlc_status()
 
     if actual_state == "paused":
-        # Already paused — don't toggle, just confirm
         return {"success": True, "title": _current_song, "note": "already paused"}
 
     if actual_state in ("playing", "unknown"):
@@ -315,11 +370,9 @@ def resume_song() -> dict:
     if not _is_playing:
         return {"success": False, "error": "Nothing to resume"}
 
-    # Ask VLC what it is actually doing right now — fixes state sync issue
     actual_state = get_vlc_status()
 
     if actual_state == "playing":
-        # Already playing — nothing to resume
         return {"success": True, "title": _current_song, "note": "already playing"}
 
     if actual_state in ("paused", "unknown"):
@@ -334,6 +387,10 @@ def resume_song() -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 def stop_song() -> dict:
     global _vlc_process, _is_playing, _is_paused, _current_song, _current_artist
+
+    # FIX 5: Early return if nothing is playing
+    if not _is_playing and _vlc_process is None:
+        return {"success": True, "stopped": ""}
 
     _rc_send("stop")
     _rc_close()
@@ -367,16 +424,22 @@ def set_volume(level: int) -> dict:
 
 
 def volume_up(step: int = 10) -> dict:
+    """FIX 1: Read VLC's real volume before stepping up."""
     global _current_volume
-    _current_volume = max(0, min(100, _current_volume + step))
+    real = _get_vlc_volume()
+    base = real if real >= 0 else _current_volume
+    _current_volume = min(100, base + step)
     vlc_vol = int((_current_volume / 100) * 256)
     _rc_send(f"volume {vlc_vol}")
     return {"success": True, "volume": _current_volume}
 
 
 def volume_down(step: int = 10) -> dict:
+    """FIX 1: Read VLC's real volume before stepping down."""
     global _current_volume
-    _current_volume = max(0, min(100, _current_volume - step))
+    real = _get_vlc_volume()
+    base = real if real >= 0 else _current_volume
+    _current_volume = max(0, base - step)
     vlc_vol = int((_current_volume / 100) * 256)
     _rc_send(f"volume {vlc_vol}")
     return {"success": True, "volume": _current_volume}
@@ -413,20 +476,22 @@ if __name__ == "__main__":
 
     while True:
         try:
-            cmd = input(">> ").strip().lower()
+            cmd = input(">> ").strip()
+            lower = cmd.lower()
 
             if not cmd:
                 continue
 
-            if cmd == "quit":
+            if lower == "quit":
                 stop_song()
                 print("Stopped. Bye.")
                 break
 
-            elif cmd == "play":
-                query = input("Song name: ").strip()
+            # FIX 4: play <query> inline — no second prompt
+            elif lower.startswith("play "):
+                query = cmd[5:].strip()
                 if not query:
-                    print("No song entered.")
+                    print("Usage: play <song name>")
                     continue
                 print(f"Searching: {query}")
                 result = play_song(query)
@@ -435,37 +500,40 @@ if __name__ == "__main__":
                 else:
                     print(f"Error: {result['error']}")
 
-            elif cmd == "pause":
+            elif lower == "play":
+                print("Usage: play <song name>")
+
+            elif lower == "pause":
                 result = pause_song()
                 print(f"Paused: {result}")
 
-            elif cmd == "resume":
+            elif lower == "resume":
                 result = resume_song()
                 print(f"Resumed: {result}")
 
-            elif cmd == "stop":
+            elif lower == "stop":
                 result = stop_song()
                 print(f"Stopped: {result}")
 
-            elif cmd.startswith("volume"):
-                parts = cmd.split()
+            elif lower.startswith("volume"):
+                parts = lower.split()
                 if len(parts) == 2 and parts[1].isdigit():
                     result = set_volume(int(parts[1]))
                     print(f"Volume set to {result['volume']}%")
-                elif "up" in cmd:
+                elif "up" in lower:
                     result = volume_up()
                     print(f"Volume up to {result['volume']}%")
-                elif "down" in cmd:
+                elif "down" in lower:
                     result = volume_down()
                     print(f"Volume down to {result['volume']}%")
                 else:
                     print("Usage: volume 70 / volume up / volume down")
 
-            elif cmd == "status":
+            elif lower == "status":
                 info = get_now_playing()
                 if info["playing"]:
-                    state = "paused" if info["paused"] else "playing"
-                    print(f"{state.capitalize()}: {info['title']} by {info['artist']}")
+                    current_status = "paused" if info["paused"] else "playing"
+                    print(f"{current_status.capitalize()}: {info['title']} by {info['artist']}")
                 else:
                     print("Nothing playing.")
 

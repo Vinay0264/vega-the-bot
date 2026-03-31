@@ -63,7 +63,7 @@ _LOCAL = re.compile(
 _SYSTEM = re.compile(
     r"\b(cpu|ram|memory usage|battery|disk\s+space|storage|pc\s+stats"
     r"|system\s+stats|system\s+info|processor\s+usage)\b"
-    r"|\b(calculate|calc|compute|solve|multiply|multiplied|divide|divided"
+    r"|\b(calculate|calc|compute|solve|multiply|multiplied|add|subtract|divide|divided"
     r"|times|squared|cubed|percent\s+of|modulo)\b"
     r"|\d+\.?\d*\s*(celsius|fahrenheit|kelvin)\b"
     r"|\d+\.?\d*\s*(km|miles|kg|lbs|cm|inches|feet|meters|grams|pounds)"
